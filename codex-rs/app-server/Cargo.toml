@@ -20,6 +20,10 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+default = ["code-mode-v8"]
+code-mode-v8 = ["codex-core/code-mode-v8"]
+
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
