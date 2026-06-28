@@ -54,10 +54,21 @@ pub(crate) struct SpawnChildRequest<'a> {
 
 #[cfg(target_os = "ios")]
 pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io::Result<Child> {
-    let _ = request;
+    let payload = codex_ios_platform::string_payload(&[
+        ("program", request.program.display().to_string()),
+        ("args", request.args.join(" ")),
+        ("cwd", request.cwd.display().to_string()),
+    ]);
+    let message = codex_ios_platform::unsupported_message(
+        codex_ios_platform::OPERATION_PROCESS_SPAWN,
+        &payload,
+    )
+    .unwrap_or_else(|| {
+        codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_PROCESS_SPAWN)
+    });
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
-        "process execution is not supported on iOS",
+        message,
     ))
 }
 

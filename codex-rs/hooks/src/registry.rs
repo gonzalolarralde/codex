@@ -225,7 +225,11 @@ pub fn list_hooks(config: HooksConfig) -> HookListOutcome {
 pub fn command_from_argv(argv: &[String]) -> Option<Command> {
     #[cfg(target_os = "ios")]
     {
-        let _ = argv;
+        let payload = codex_ios_platform::string_payload(&[("argv", argv.join(" "))]);
+        let _ = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_HOOK_COMMAND,
+            &payload,
+        );
         return None;
     }
 

@@ -194,10 +194,21 @@ impl LocalProcess {
         params: ExecParams,
     ) -> Result<(ExecResponse, watch::Sender<u64>, ExecProcessEventLog), JSONRPCErrorError> {
         let _ = self;
-        let _ = params;
-        Err(invalid_request(
-            "process execution is not supported on iOS".to_string(),
-        ))
+        let payload = codex_ios_platform::string_payload(&[
+            ("processId", params.process_id.to_string()),
+            ("argv", params.argv.join(" ")),
+            ("cwd", params.cwd.to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_PROCESS_SPAWN,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(
+                codex_ios_platform::OPERATION_PROCESS_SPAWN,
+            )
+        });
+        Err(invalid_request(message))
     }
 
     #[cfg(not(target_os = "ios"))]

@@ -127,11 +127,15 @@ pub fn apply_git_patch(req: &ApplyGitRequest) -> io::Result<ApplyGitResult> {
 fn resolve_git_root(cwd: &Path) -> io::Result<PathBuf> {
     #[cfg(target_os = "ios")]
     {
-        let _ = cwd;
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "git apply is not supported on iOS",
-        ));
+        let payload = codex_ios_platform::string_payload(&[("cwd", cwd.display().to_string())]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_GIT_APPLY,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_GIT_APPLY)
+        });
+        return Err(io::Error::new(io::ErrorKind::Unsupported, message));
     }
 
     #[cfg(not(target_os = "ios"))]
@@ -164,11 +168,19 @@ fn write_temp_patch(diff: &str) -> io::Result<(tempfile::TempDir, PathBuf)> {
 fn run_git(cwd: &Path, git_cfg: &[String], args: &[String]) -> io::Result<(i32, String, String)> {
     #[cfg(target_os = "ios")]
     {
-        let _ = (cwd, git_cfg, args);
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "git apply is not supported on iOS",
-        ));
+        let payload = codex_ios_platform::string_payload(&[
+            ("command", format!("git {}", args.join(" "))),
+            ("config", git_cfg.join(" ")),
+            ("cwd", cwd.display().to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_GIT_APPLY,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_GIT_APPLY)
+        });
+        return Err(io::Error::new(io::ErrorKind::Unsupported, message));
     }
 
     #[cfg(not(target_os = "ios"))]
@@ -345,11 +357,18 @@ fn unescape_c_string(input: &str) -> String {
 pub fn stage_paths(git_root: &Path, diff: &str) -> io::Result<()> {
     #[cfg(target_os = "ios")]
     {
-        let _ = (git_root, diff);
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "git staging is not supported on iOS",
-        ));
+        let payload = codex_ios_platform::string_payload(&[
+            ("gitRoot", git_root.display().to_string()),
+            ("diffBytes", diff.len().to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_GIT_STAGE,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_GIT_STAGE)
+        });
+        return Err(io::Error::new(io::ErrorKind::Unsupported, message));
     }
 
     #[cfg(not(target_os = "ios"))]

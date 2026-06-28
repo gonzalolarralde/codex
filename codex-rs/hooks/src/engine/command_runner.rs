@@ -36,7 +36,17 @@ pub(crate) async fn run_command(
 ) -> CommandRunResult {
     let _ = shell;
     let _ = input_json;
-    let _ = cwd;
+    let payload = codex_ios_platform::string_payload(&[
+        ("command", handler.command.clone()),
+        ("cwd", cwd.display().to_string()),
+    ]);
+    let message = codex_ios_platform::unsupported_message(
+        codex_ios_platform::OPERATION_HOOK_COMMAND,
+        &payload,
+    )
+    .unwrap_or_else(|| {
+        codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_HOOK_COMMAND)
+    });
     let started_at = chrono::Utc::now().timestamp();
     CommandRunResult {
         started_at,
@@ -45,10 +55,7 @@ pub(crate) async fn run_command(
         exit_code: None,
         stdout: String::new(),
         stderr: String::new(),
-        error: Some(format!(
-            "hook command `{}` is not supported on iOS",
-            handler.command
-        )),
+        error: Some(message),
     }
 }
 

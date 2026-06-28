@@ -114,12 +114,21 @@ where
 
     #[cfg(target_os = "ios")]
     {
-        let _ = (dir, env);
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            format!("git command `{command_string}` is not supported on iOS"),
+        let _ = env;
+        let payload = codex_ios_platform::string_payload(&[
+            ("command", format!("git {command_string}")),
+            ("cwd", dir.display().to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_GIT_COMMAND,
+            &payload,
         )
-        .into());
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(
+                codex_ios_platform::OPERATION_GIT_COMMAND,
+            )
+        });
+        return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, message).into());
     }
 
     #[cfg(not(target_os = "ios"))]

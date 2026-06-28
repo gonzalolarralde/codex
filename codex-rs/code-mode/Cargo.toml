@@ -19,6 +19,7 @@ workspace = true
 
 [dependencies]
 codex-code-mode-protocol = { workspace = true }
+codex-ios-platform = { workspace = true }
 codex-protocol = { workspace = true }
 deno_core_icudata = { workspace = true, optional = true }
 serde_json = { workspace = true }

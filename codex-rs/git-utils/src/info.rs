@@ -421,7 +421,17 @@ impl crate::FsmonitorProbeRunner for LocalFsmonitorProbeRunner<'_> {
     async fn run_probe(&mut self, args: &[&str]) -> Option<Vec<u8>> {
         #[cfg(target_os = "ios")]
         {
-            let _ = args;
+            let payload = codex_ios_platform::string_payload(&[
+                (
+                    "command",
+                    format!("{} {}", self.git.display(), args.join(" ")),
+                ),
+                ("cwd", self.cwd.display().to_string()),
+            ]);
+            let _ = codex_ios_platform::unsupported_message(
+                codex_ios_platform::OPERATION_GIT_COMMAND,
+                &payload,
+            );
             return None;
         }
 
@@ -452,7 +462,15 @@ async fn run_git_command_with_timeout_from(
 ) -> Option<std::process::Output> {
     #[cfg(target_os = "ios")]
     {
-        let _ = (git, args, cwd, fsmonitor);
+        let _ = fsmonitor;
+        let payload = codex_ios_platform::string_payload(&[
+            ("command", format!("{} {}", git.display(), args.join(" "))),
+            ("cwd", cwd.display().to_string()),
+        ]);
+        let _ = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_GIT_COMMAND,
+            &payload,
+        );
         return None;
     }
 

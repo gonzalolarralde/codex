@@ -241,12 +241,27 @@ impl LocalStdioServerLauncher {
         command: StdioServerCommand,
         fallback_cwd: PathBuf,
     ) -> io::Result<StdioServerTransport> {
-        let _ = command;
-        let _ = fallback_cwd;
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "local stdio MCP servers are not supported on iOS",
-        ))
+        let payload = codex_ios_platform::string_payload(&[
+            ("program", command.program.to_string_lossy().to_string()),
+            (
+                "args",
+                command
+                    .args
+                    .iter()
+                    .map(|arg| arg.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+            ("cwd", fallback_cwd.display().to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_MCP_STDIO,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_MCP_STDIO)
+        });
+        Err(io::Error::new(io::ErrorKind::Unsupported, message))
     }
 
     #[cfg(not(target_os = "ios"))]

@@ -301,10 +301,18 @@ impl ExecServerClient {
     ) -> Result<Self, ExecServerError> {
         #[cfg(target_os = "ios")]
         {
-            let _ = args;
-            return Err(ExecServerError::Protocol(
-                "local exec-server stdio commands are not supported on iOS".to_string(),
-            ));
+            let payload =
+                codex_ios_platform::string_payload(&[("command", args.command.program.clone())]);
+            let message = codex_ios_platform::unsupported_message(
+                codex_ios_platform::OPERATION_PROCESS_SPAWN,
+                &payload,
+            )
+            .unwrap_or_else(|| {
+                codex_ios_platform::generic_unsupported_message(
+                    codex_ios_platform::OPERATION_PROCESS_SPAWN,
+                )
+            });
+            return Err(ExecServerError::Protocol(message));
         }
 
         #[cfg(not(target_os = "ios"))]

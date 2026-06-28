@@ -336,9 +336,17 @@ fn spawn_command(
     {
         let _ = (cwd, env, arg0);
         let command_string = argv.join(" ");
-        return Err(internal_error(format!(
-            "fs sandbox command `{command_string}` is not supported on iOS"
-        )));
+        let payload = codex_ios_platform::string_payload(&[("command", command_string.clone())]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_PROCESS_SPAWN,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(
+                codex_ios_platform::OPERATION_PROCESS_SPAWN,
+            )
+        });
+        return Err(internal_error(message));
     }
 
     #[cfg(not(target_os = "ios"))]

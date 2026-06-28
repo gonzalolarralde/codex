@@ -286,8 +286,23 @@ async fn run_script_with_timeout(
 ) -> Result<String> {
     #[cfg(target_os = "ios")]
     {
-        let _ = (shell, script, snapshot_timeout, use_login_shell, cwd);
-        bail!("shell snapshot commands are not supported on iOS");
+        let _ = snapshot_timeout;
+        let payload = codex_ios_platform::string_payload(&[
+            ("shell", shell.name().to_string()),
+            ("script", script.to_string()),
+            ("useLoginShell", use_login_shell.to_string()),
+            ("cwd", cwd.display().to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_SHELL_SNAPSHOT,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(
+                codex_ios_platform::OPERATION_SHELL_SNAPSHOT,
+            )
+        });
+        bail!(message);
     }
 
     #[cfg(not(target_os = "ios"))]

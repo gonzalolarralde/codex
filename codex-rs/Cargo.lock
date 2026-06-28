@@ -1991,6 +1991,7 @@ dependencies = [
  "codex-home",
  "codex-hooks",
  "codex-image-generation-extension",
+ "codex-ios-platform",
  "codex-login",
  "codex-mcp",
  "codex-mcp-extension",
@@ -2495,6 +2496,7 @@ name = "codex-code-mode"
 version = "0.0.0"
 dependencies = [
  "codex-code-mode-protocol",
+ "codex-ios-platform",
  "codex-protocol",
  "deno_core_icudata",
  "pretty_assertions",
@@ -2633,6 +2635,7 @@ dependencies = [
  "codex-hooks",
  "codex-image-generation-extension",
  "codex-install-context",
+ "codex-ios-platform",
  "codex-login",
  "codex-mcp",
  "codex-memories-read",
@@ -2882,6 +2885,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-client",
  "codex-file-system",
+ "codex-ios-platform",
  "codex-protocol",
  "codex-sandboxing",
  "codex-shell-command",
@@ -3070,6 +3074,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "codex-file-system",
+ "codex-ios-platform",
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-path-uri",
@@ -3137,6 +3142,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "codex-config",
+ "codex-ios-platform",
  "codex-plugin",
  "codex-protocol",
  "codex-utils-absolute-path",
@@ -3184,6 +3190,13 @@ dependencies = [
  "codex-utils-home-dir",
  "pretty_assertions",
  "tempfile",
+]
+
+[[package]]
+name = "codex-ios-platform"
+version = "0.0.0"
+dependencies = [
+ "pretty_assertions",
 ]
 
 [[package]]
@@ -3716,6 +3729,7 @@ dependencies = [
  "codex-client",
  "codex-config",
  "codex-exec-server",
+ "codex-ios-platform",
  "codex-keyring-store",
  "codex-protocol",
  "codex-secrets",

@@ -2,10 +2,40 @@
 #define CODEX_APP_SERVER_IOS_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define CODEX_IOS_PLATFORM_CALLBACKS_VERSION 1
+
+typedef size_t (*codex_ios_unsupported_operation_callback_t)(
+    void *context,
+    const char *operation,
+    const char *payload_json,
+    char *message_buffer,
+    size_t message_buffer_len);
+
+typedef struct CodexIosPlatformCallbacks {
+    uint32_t version;
+    void *context;
+    codex_ios_unsupported_operation_callback_t unsupported_operation;
+} CodexIosPlatformCallbacks;
+
+// Registers callbacks for iOS platform operations that are normally backed by
+// APIs unavailable to an embedded iOS process. Passing NULL clears callbacks.
+// Unsupported-operation callbacks may write a UTF-8 message to message_buffer
+// and return the number of bytes written, excluding the trailing nul. Returning
+// 0 means the operation was not handled.
+//
+// The callback table is copied. The context pointer remains owned by Swift and
+// must stay valid until callbacks are cleared or replaced.
+void codex_ios_platform_set_callbacks(
+    const CodexIosPlatformCallbacks *callbacks);
+
+// Clears registered iOS platform callbacks.
+void codex_ios_platform_clear_callbacks(void);
 
 // Starts codex-app-server in stdio transport mode.
 //
