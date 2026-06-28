@@ -3,24 +3,33 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::future::Future;
+#[cfg(not(target_os = "ios"))]
 use std::io::ErrorKind;
 use std::path::Path;
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+#[cfg(not(target_os = "ios"))]
 use std::time::Duration;
+#[cfg(not(target_os = "ios"))]
 use std::time::Instant;
 
 use async_channel::Sender;
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
 #[cfg(windows)]
 use codex_utils_pty::JobObject;
+#[cfg(not(target_os = "ios"))]
 use tokio::io::AsyncWriteExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
+#[cfg(not(target_os = "ios"))]
 use tracing::Span;
 
 use super::CommandShell;
@@ -187,6 +196,32 @@ impl CommandHookRuntime {
     }
 }
 
+#[cfg(target_os = "ios")]
+pub(crate) async fn run_command(
+    runtime: &CommandHookRuntime,
+    handler: &ConfiguredHandler,
+    command: &str,
+    env: &HashMap<String, String>,
+    input_json: &str,
+    cwd: &Path,
+) -> HandlerRunResult {
+    let _ = (runtime, handler, env, input_json, cwd);
+    let started_at = chrono::Utc::now().timestamp();
+    HandlerRunResult {
+        started_at,
+        completed_at: started_at,
+        duration_ms: 0,
+        exit_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        error: Some(format!(
+            "hook command `{}` is not supported on iOS",
+            command
+        )),
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
 #[tracing::instrument(
     name = "codex.hooks.command",
     level = "trace",
@@ -329,12 +364,14 @@ pub(crate) async fn run_command(
 }
 
 // Needed only until command hooks move to the exec server, which owns process-tree cleanup.
+#[cfg(not(target_os = "ios"))]
 struct ProcessTreeGuard {
     process_id: Option<u32>,
     #[cfg(windows)]
     job: Option<JobObject>,
 }
 
+#[cfg(not(target_os = "ios"))]
 impl Drop for ProcessTreeGuard {
     fn drop(&mut self) {
         let Some(process_id) = self.process_id else {
@@ -362,6 +399,7 @@ impl Drop for ProcessTreeGuard {
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 struct CommandRunCompletion {
     exit_code: Option<i32>,
     stdout: String,
@@ -370,6 +408,7 @@ struct CommandRunCompletion {
     outcome: &'static str,
 }
 
+#[cfg(not(target_os = "ios"))]
 fn finish_command_run(
     started_at: i64,
     started: Instant,
@@ -387,6 +426,7 @@ fn finish_command_run(
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 fn build_command(
     shell: &CommandShell,
     command_line: &str,
@@ -425,6 +465,7 @@ fn build_command(
     command
 }
 
+#[cfg(not(target_os = "ios"))]
 fn default_shell_command(environment: &[(OsString, OsString)]) -> Command {
     #[cfg(windows)]
     let (environment_variable, fallback_program, argument) = ("COMSPEC", "cmd.exe", "/C");
@@ -454,6 +495,6 @@ fn default_shell_command(environment: &[(OsString, OsString)]) -> Command {
     command
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "ios")))]
 #[path = "command_runner_tests.rs"]
 mod tests;

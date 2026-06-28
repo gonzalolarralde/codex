@@ -310,14 +310,23 @@ pub(crate) fn command_from_argv(
     argv: &[String],
     environment: impl IntoIterator<Item = (OsString, OsString)>,
 ) -> Option<Command> {
-    let (program, args) = argv.split_first()?;
-    if program.is_empty() {
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (argv, environment);
         return None;
     }
-    let mut command = Command::new(program);
-    command.args(args);
-    command.env_clear();
-    command.envs(environment);
-    scrub_non_inheritable_env_vars(command.as_std_mut());
-    Some(command)
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let (program, args) = argv.split_first()?;
+        if program.is_empty() {
+            return None;
+        }
+        let mut command = Command::new(program);
+        command.args(args);
+        command.env_clear();
+        command.envs(environment);
+        scrub_non_inheritable_env_vars(command.as_std_mut());
+        Some(command)
+    }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code))]
+
 //! Platform-specific program resolution for MCP server execution.
 //!
 //! This module provides a unified interface for resolving executable paths

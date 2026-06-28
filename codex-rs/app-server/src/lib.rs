@@ -46,6 +46,7 @@ use crate::transport::route_outgoing_envelope;
 use crate::transport::start_control_socket_acceptor;
 use crate::transport::start_remote_control;
 use crate::transport::start_stdio_connection;
+use crate::transport::start_stdio_connection_with_io_and_shutdown;
 use crate::transport::start_websocket_acceptor;
 use codex_analytics::AppServerRpcTransport;
 use codex_app_server_protocol::ConfigWarningNotification;
@@ -60,12 +61,15 @@ use codex_core::ExecPolicyError;
 use codex_core::check_execpolicy_for_warnings;
 use codex_core::config::find_codex_home;
 use codex_exec_server::EnvironmentManager;
+#[cfg(not(target_os = "ios"))]
 use codex_exec_server::ExecServerRuntimePaths;
 use codex_features::Feature;
 use codex_feedback::CodexFeedback;
 use codex_protocol::protocol::SessionSource;
 use codex_rollout::state_db as rollout_state_db;
 use codex_state::log_db;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -115,6 +119,8 @@ mod fs_watch;
 mod fuzzy_file_search;
 mod image_url;
 pub mod in_process;
+#[cfg(target_os = "ios")]
+mod ios_ffi;
 mod mcp_refresh;
 mod message_processor;
 mod models;
@@ -437,12 +443,13 @@ pub enum PluginStartupTasks {
     Skip,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct AppServerRuntimeOptions {
     pub code_mode_host_transport: CodeModeHostTransport,
     pub plugin_startup_tasks: PluginStartupTasks,
     pub remote_control_startup_mode: RemoteControlStartupMode,
     pub install_shutdown_signal_handler: bool,
+    pub shutdown_token: Option<CancellationToken>,
 }
 
 impl Default for AppServerRuntimeOptions {
@@ -452,7 +459,47 @@ impl Default for AppServerRuntimeOptions {
             plugin_startup_tasks: PluginStartupTasks::Start,
             remote_control_startup_mode: RemoteControlStartupMode::ResolvePersisted,
             install_shutdown_signal_handler: true,
+            shutdown_token: None,
         }
+    }
+}
+
+enum AppServerTransportRuntime {
+    BuiltIn(AppServerTransport),
+    StdioIo {
+        reader: Box<dyn AsyncRead + Send + Unpin + 'static>,
+        writer: Box<dyn AsyncWrite + Send + Unpin + 'static>,
+    },
+}
+
+impl AppServerTransportRuntime {
+    fn app_server_transport(&self) -> AppServerTransport {
+        match self {
+            Self::BuiltIn(transport) => transport.clone(),
+            Self::StdioIo { .. } => AppServerTransport::Stdio,
+        }
+    }
+}
+
+pub struct AppServerHandle {
+    shutdown_token: CancellationToken,
+    task: JoinHandle<IoResult<()>>,
+}
+
+impl AppServerHandle {
+    pub fn shutdown(&self) {
+        self.shutdown_token.cancel();
+    }
+
+    pub async fn wait(self) -> IoResult<()> {
+        self.task
+            .await
+            .map_err(|err| std::io::Error::other(format!("app-server task failed: {err}")))?
+    }
+
+    pub async fn shutdown_and_wait(self) -> IoResult<()> {
+        self.shutdown();
+        self.wait().await
     }
 }
 
@@ -468,6 +515,108 @@ pub async fn run_main_with_transport_options(
     auth: AppServerWebsocketAuthSettings,
     runtime_options: AppServerRuntimeOptions,
 ) -> IoResult<()> {
+    run_main_with_transport_runtime(
+        arg0_paths,
+        cli_config_overrides,
+        loader_overrides,
+        strict_config,
+        default_analytics_enabled,
+        AppServerTransportRuntime::BuiltIn(transport),
+        session_source,
+        auth,
+        runtime_options,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_main_with_stdio_io<R, W>(
+    arg0_paths: Arg0DispatchPaths,
+    cli_config_overrides: CliConfigOverrides,
+    loader_overrides: LoaderOverrides,
+    strict_config: bool,
+    default_analytics_enabled: bool,
+    reader: R,
+    writer: W,
+    session_source: SessionSource,
+    auth: AppServerWebsocketAuthSettings,
+    runtime_options: AppServerRuntimeOptions,
+) -> IoResult<()>
+where
+    R: AsyncRead + Send + Unpin + 'static,
+    W: AsyncWrite + Send + Unpin + 'static,
+{
+    run_main_with_transport_runtime(
+        arg0_paths,
+        cli_config_overrides,
+        loader_overrides,
+        strict_config,
+        default_analytics_enabled,
+        AppServerTransportRuntime::StdioIo {
+            reader: Box::new(reader),
+            writer: Box::new(writer),
+        },
+        session_source,
+        auth,
+        runtime_options,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_app_server_with_stdio_io<R, W>(
+    arg0_paths: Arg0DispatchPaths,
+    cli_config_overrides: CliConfigOverrides,
+    loader_overrides: LoaderOverrides,
+    strict_config: bool,
+    default_analytics_enabled: bool,
+    reader: R,
+    writer: W,
+    session_source: SessionSource,
+    auth: AppServerWebsocketAuthSettings,
+    mut runtime_options: AppServerRuntimeOptions,
+) -> AppServerHandle
+where
+    R: AsyncRead + Send + Unpin + 'static,
+    W: AsyncWrite + Send + Unpin + 'static,
+{
+    let shutdown_token = runtime_options
+        .shutdown_token
+        .clone()
+        .unwrap_or_else(CancellationToken::new);
+    runtime_options.shutdown_token = Some(shutdown_token.clone());
+    let task = tokio::spawn(run_main_with_stdio_io(
+        arg0_paths,
+        cli_config_overrides,
+        loader_overrides,
+        strict_config,
+        default_analytics_enabled,
+        reader,
+        writer,
+        session_source,
+        auth,
+        runtime_options,
+    ));
+
+    AppServerHandle {
+        shutdown_token,
+        task,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_main_with_transport_runtime(
+    arg0_paths: Arg0DispatchPaths,
+    cli_config_overrides: CliConfigOverrides,
+    loader_overrides: LoaderOverrides,
+    strict_config: bool,
+    default_analytics_enabled: bool,
+    transport_runtime: AppServerTransportRuntime,
+    session_source: SessionSource,
+    auth: AppServerWebsocketAuthSettings,
+    runtime_options: AppServerRuntimeOptions,
+) -> IoResult<()> {
+    let transport = transport_runtime.app_server_transport();
     let loader_overrides = loader_overrides_with_test_user_config_file(
         loader_overrides,
         test_user_config_file_from_env(),
@@ -487,10 +636,12 @@ pub async fn run_main_with_transport_options(
         )
     })?;
     let codex_home = find_codex_home()?;
+    #[cfg(not(target_os = "ios"))]
     let local_runtime_paths = ExecServerRuntimePaths::from_optional_paths(
         arg0_paths.codex_self_exe.clone(),
         arg0_paths.codex_linux_sandbox_exe.clone(),
     )?;
+    #[cfg(not(target_os = "ios"))]
     let ignore_user_config = loader_overrides.ignore_user_config;
     let config_manager = ConfigManager::new(
         codex_home.to_path_buf(),
@@ -568,6 +719,9 @@ pub async fn run_main_with_transport_options(
                 ))
             }
         };
+    #[cfg(target_os = "ios")]
+    let environment_manager = Arc::new(EnvironmentManager::default_for_tests());
+    #[cfg(not(target_os = "ios"))]
     let environment_manager = if ignore_user_config {
         EnvironmentManager::from_env(Some(local_runtime_paths), config.http_client_factory()).await
     } else {
@@ -712,6 +866,10 @@ pub async fn run_main_with_transport_options(
     }
     let installation_id = resolve_installation_id(&config.codex_home).await?;
     let transport_shutdown_token = CancellationToken::new();
+    let app_shutdown_token = runtime_options
+        .shutdown_token
+        .clone()
+        .unwrap_or_else(CancellationToken::new);
     let mut transport_accept_handles = Vec::<JoinHandle<()>>::new();
 
     let single_client_mode = matches!(&transport, AppServerTransport::Stdio);
@@ -719,8 +877,8 @@ pub async fn run_main_with_transport_options(
         runtime_options.install_shutdown_signal_handler && !single_client_mode;
     let mut app_server_client_name_rx = None;
 
-    match &transport {
-        AppServerTransport::Stdio => {
+    match transport_runtime {
+        AppServerTransportRuntime::BuiltIn(AppServerTransport::Stdio) => {
             let (stdio_client_name_tx, stdio_client_name_rx) = oneshot::channel::<String>();
             app_server_client_name_rx = Some(stdio_client_name_rx);
             start_stdio_connection(
@@ -730,7 +888,20 @@ pub async fn run_main_with_transport_options(
             )
             .await?;
         }
-        AppServerTransport::UnixSocket { socket_path } => {
+        AppServerTransportRuntime::StdioIo { reader, writer } => {
+            let (stdio_client_name_tx, stdio_client_name_rx) = oneshot::channel::<String>();
+            app_server_client_name_rx = Some(stdio_client_name_rx);
+            start_stdio_connection_with_io_and_shutdown(
+                transport_event_tx.clone(),
+                &mut transport_accept_handles,
+                stdio_client_name_tx,
+                reader,
+                writer,
+                Some(app_shutdown_token.clone()),
+            )
+            .await?;
+        }
+        AppServerTransportRuntime::BuiltIn(AppServerTransport::UnixSocket { socket_path }) => {
             let accept_handle = start_control_socket_acceptor(
                 socket_path.clone(),
                 transport_event_tx.clone(),
@@ -739,9 +910,9 @@ pub async fn run_main_with_transport_options(
             .await?;
             transport_accept_handles.push(accept_handle);
         }
-        AppServerTransport::WebSocket { bind_address } => {
+        AppServerTransportRuntime::BuiltIn(AppServerTransport::WebSocket { bind_address }) => {
             let accept_handle = start_websocket_acceptor(
-                *bind_address,
+                bind_address,
                 transport_event_tx.clone(),
                 transport_shutdown_token.clone(),
                 policy_from_settings(&auth)?,
@@ -749,7 +920,7 @@ pub async fn run_main_with_transport_options(
             .await?;
             transport_accept_handles.push(accept_handle);
         }
-        AppServerTransport::Off => {}
+        AppServerTransportRuntime::BuiltIn(AppServerTransport::Off) => {}
     }
     drop(unix_socket_startup_lock);
 
@@ -932,6 +1103,7 @@ pub async fn run_main_with_transport_options(
         let mut remote_control_status_rx = remote_control_handle.status_receiver();
         let mut remote_control_status = remote_control_status_rx.borrow().clone();
         let transport_shutdown_token = transport_shutdown_token.clone();
+        let app_shutdown_token = app_shutdown_token.clone();
         async move {
             let mut listen_for_threads = true;
             let mut shutdown_state = ShutdownState::default();
@@ -967,6 +1139,13 @@ pub async fn run_main_with_transport_options(
                         if changed.is_err() {
                             warn!("running-turn watcher closed during graceful restart drain");
                         }
+                    }
+                    _ = app_shutdown_token.cancelled() => {
+                        transport_shutdown_token.cancel();
+                        let _ = outbound_control_tx
+                            .send(OutboundControlEvent::DisconnectAll)
+                            .await;
+                        break;
                     }
                     event = transport_event_rx.recv() => {
                         let Some(event) = event else {

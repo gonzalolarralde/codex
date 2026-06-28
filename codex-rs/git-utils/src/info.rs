@@ -7,12 +7,15 @@ use futures::future::join_all;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::Duration as TokioDuration;
 use ts_rs::TS;
 
 use crate::GitSha;
 use crate::SanitizedGitUrl;
+#[cfg(not(target_os = "ios"))]
 use crate::git_process::run_git_command_with_timeout_output;
 
 /// Return `true` if the project folder specified by the `Config` is inside a
@@ -37,7 +40,9 @@ pub fn get_git_repo_root(base_dir: &Path) -> Option<PathBuf> {
 }
 
 /// Timeout for git commands to prevent freezing on large repositories
+#[cfg(not(target_os = "ios"))]
 const GIT_COMMAND_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
+#[cfg(not(target_os = "ios"))]
 const DISABLED_HOOKS_PATH: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, TS)]
@@ -377,6 +382,7 @@ async fn run_git_command_with_timeout(args: &[&str], cwd: &Path) -> Option<std::
     .await
 }
 
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 struct LocalFsmonitorProbeRunner<'a> {
     git: &'a Path,
     cwd: &'a Path,
@@ -384,16 +390,25 @@ struct LocalFsmonitorProbeRunner<'a> {
 
 impl crate::FsmonitorProbeRunner for LocalFsmonitorProbeRunner<'_> {
     async fn run_probe(&mut self, args: &[&str]) -> Option<Vec<u8>> {
-        // Both probes are fast, bounded metadata queries that do not inspect the
-        // worktree or index, so do not reduce the requested command's timeout.
-        let mut command = Command::new(self.git);
-        command
-            .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
-            .args(args)
-            .current_dir(self.cwd);
-        match run_git_command_with_timeout_output(&mut command, GIT_COMMAND_TIMEOUT).await {
-            Some(output) if output.status.success() => Some(output.stdout),
-            _ => None,
+        #[cfg(target_os = "ios")]
+        {
+            let _ = args;
+            return None;
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            // Both probes are fast, bounded metadata queries that do not inspect the
+            // worktree or index, so do not reduce the requested command's timeout.
+            let mut command = Command::new(self.git);
+            command
+                .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
+                .args(args)
+                .current_dir(self.cwd);
+            match run_git_command_with_timeout_output(&mut command, GIT_COMMAND_TIMEOUT).await {
+                Some(output) if output.status.success() => Some(output.stdout),
+                _ => None,
+            }
         }
     }
 }
@@ -412,17 +427,26 @@ pub(crate) async fn run_git_command_with_timeout_from(
     cwd: &Path,
     fsmonitor: crate::FsmonitorOverride,
 ) -> Option<std::process::Output> {
-    let mut command = Command::new(git);
-    command
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
-        // Keep internal Git commands independent of repository-selected hooks
-        // and fsmonitor helpers while preserving built-in fsmonitor acceleration.
-        .args(["-c", &format!("core.hooksPath={DISABLED_HOOKS_PATH}")])
-        .args(["-c", fsmonitor.git_config_arg()])
-        .args(args)
-        .current_dir(cwd);
-    run_git_command_with_timeout_output(&mut command, GIT_COMMAND_TIMEOUT).await
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (git, args, cwd, fsmonitor);
+        return None;
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut command = Command::new(git);
+        command
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
+            // Keep internal Git commands independent of repository-selected hooks
+            // and fsmonitor helpers while preserving built-in fsmonitor acceleration.
+            .args(["-c", &format!("core.hooksPath={DISABLED_HOOKS_PATH}")])
+            .args(["-c", fsmonitor.git_config_arg()])
+            .args(args)
+            .current_dir(cwd);
+        run_git_command_with_timeout_output(&mut command, GIT_COMMAND_TIMEOUT).await
+    }
 }
 
 async fn get_git_remotes(cwd: &Path) -> Option<Vec<String>> {

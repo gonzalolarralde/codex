@@ -25,6 +25,7 @@ use tokio::io::AsyncBufReadExt;
 #[cfg(any(windows, test))]
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
 
 use crate::ExecServerRuntimePaths;
@@ -445,43 +446,56 @@ pub(crate) fn spawn_command(
     SandboxExecRequest {
         command: argv,
         cwd,
-        mut env,
+        env,
         arg0,
         ..
     }: SandboxExecRequest,
     stdin: std::process::Stdio,
 ) -> Result<tokio::process::Child, JSONRPCErrorError> {
-    let Some((program, args)) = argv.split_first() else {
-        return Err(invalid_request("fs sandbox command was empty".to_string()));
-    };
-    let mut command = Command::new(program);
-    #[cfg(unix)]
-    if let Some(arg0) = arg0 {
-        command.arg0(arg0);
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (cwd, env, arg0, stdin);
+        let command_string = argv.join(" ");
+        return Err(internal_error(format!(
+            "fs sandbox command `{command_string}` is not supported on iOS"
+        )));
     }
-    #[cfg(not(unix))]
-    let _ = arg0;
-    command.args(args);
-    // TODO(anp): Keep PathUri through the filesystem helper launch boundary.
-    let cwd = cwd.to_abs_path().map_err(io_error)?;
-    command.current_dir(cwd.as_path());
-    env.retain(|name, _| !codex_protocol::shell_environment::is_non_inheritable_env_var(name));
-    command.env_clear();
-    command.envs(env);
-    command.stdin(stdin);
-    command.stdout(std::process::Stdio::piped());
-    command.stderr(std::process::Stdio::piped());
-    command.kill_on_drop(true);
-    // macOS cannot receive passed fds with close-on-exec set atomically.
-    #[cfg(target_os = "macos")]
-    // SAFETY: Descriptor cleanup only uses fork-safe system calls.
-    unsafe {
-        command.pre_exec(|| {
-            codex_utils_pty::pty::close_inherited_fds_except(&[]);
-            Ok(())
-        });
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let Some((program, args)) = argv.split_first() else {
+            return Err(invalid_request("fs sandbox command was empty".to_string()));
+        };
+        let mut command = Command::new(program);
+        #[cfg(unix)]
+        if let Some(arg0) = arg0 {
+            command.arg0(arg0);
+        }
+        #[cfg(not(unix))]
+        let _ = arg0;
+        command.args(args);
+        // TODO(anp): Keep PathUri through the filesystem helper launch boundary.
+        let cwd = cwd.to_abs_path().map_err(io_error)?;
+        command.current_dir(cwd.as_path());
+        let mut env = env;
+        env.retain(|name, _| !codex_protocol::shell_environment::is_non_inheritable_env_var(name));
+        command.env_clear();
+        command.envs(env);
+        command.stdin(stdin);
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+        command.kill_on_drop(true);
+        // macOS cannot receive passed fds with close-on-exec set atomically.
+        #[cfg(target_os = "macos")]
+        // SAFETY: Descriptor cleanup only uses fork-safe system calls.
+        unsafe {
+            command.pre_exec(|| {
+                codex_utils_pty::pty::close_inherited_fds_except(&[]);
+                Ok(())
+            });
+        }
+        command.spawn().map_err(io_error)
     }
-    command.spawn().map_err(io_error)
 }
 
 pub(crate) fn io_error(err: std::io::Error) -> JSONRPCErrorError {

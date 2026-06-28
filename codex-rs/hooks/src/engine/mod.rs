@@ -50,6 +50,7 @@ use std::time::Duration;
 use command_runner::CommandHookRuntime;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub(crate) struct CommandShell {
     pub program: String,
     pub args: Vec<String>,

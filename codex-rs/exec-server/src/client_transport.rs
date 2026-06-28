@@ -1,9 +1,13 @@
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(not(target_os = "ios"))]
+use std::process::Stdio;
+#[cfg(not(target_os = "ios"))]
 use tokio::io::AsyncBufReadExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::io::BufReader;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Instant;
@@ -11,7 +15,9 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::timeout_at;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+#[cfg(not(target_os = "ios"))]
 use tracing::debug;
+#[cfg(not(target_os = "ios"))]
 use tracing::warn;
 
 use codex_http_client::HttpClientFactory;
@@ -33,6 +39,7 @@ use crate::client_api::NoiseRendezvousConnectArgs;
 use crate::client_api::NoiseRendezvousConnectBundle;
 use crate::client_api::NoiseRendezvousConnectProvider;
 use crate::client_api::RemoteExecServerConnectArgs;
+#[cfg(not(target_os = "ios"))]
 use crate::client_api::StdioExecServerCommand;
 use crate::client_api::StdioExecServerConnectArgs;
 use crate::connection::JsonRpcConnection;
@@ -507,41 +514,56 @@ impl ExecServerClient {
     pub(crate) async fn connect_stdio_command(
         args: StdioExecServerConnectArgs,
     ) -> Result<Self, ExecServerError> {
-        let mut child = stdio_command_process(&args.command)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(ExecServerError::Spawn)?;
-
-        let stdin = child.stdin.take().ok_or_else(|| {
-            ExecServerError::Protocol("spawned exec-server command has no stdin".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            ExecServerError::Protocol("spawned exec-server command has no stdout".to_string())
-        })?;
-        if let Some(stderr) = child.stderr.take() {
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                loop {
-                    match lines.next_line().await {
-                        Ok(Some(line)) => debug!("exec-server stdio stderr: {line}"),
-                        Ok(None) => break,
-                        Err(err) => {
-                            warn!("failed to read exec-server stdio stderr: {err}");
-                            break;
-                        }
-                    }
-                }
-            });
+        #[cfg(target_os = "ios")]
+        {
+            let _ = args;
+            return Err(ExecServerError::Protocol(
+                "local exec-server stdio commands are not supported on iOS".to_string(),
+            ));
         }
 
-        Self::connect(
-            JsonRpcConnection::from_stdio(stdout, stdin, "exec-server stdio command".to_string())
+        #[cfg(not(target_os = "ios"))]
+        {
+            let mut child = stdio_command_process(&args.command)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(ExecServerError::Spawn)?;
+
+            let stdin = child.stdin.take().ok_or_else(|| {
+                ExecServerError::Protocol("spawned exec-server command has no stdin".to_string())
+            })?;
+            let stdout = child.stdout.take().ok_or_else(|| {
+                ExecServerError::Protocol("spawned exec-server command has no stdout".to_string())
+            })?;
+            if let Some(stderr) = child.stderr.take() {
+                tokio::spawn(async move {
+                    let mut lines = BufReader::new(stderr).lines();
+                    loop {
+                        match lines.next_line().await {
+                            Ok(Some(line)) => debug!("exec-server stdio stderr: {line}"),
+                            Ok(None) => break,
+                            Err(err) => {
+                                warn!("failed to read exec-server stdio stderr: {err}");
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+
+            Self::connect(
+                JsonRpcConnection::from_stdio(
+                    stdout,
+                    stdin,
+                    "exec-server stdio command".to_string(),
+                )
                 .with_child_process(child),
-            args.into(),
-        )
-        .await
+                args.into(),
+            )
+            .await
+        }
     }
 }
 
@@ -555,6 +577,7 @@ fn is_rendezvous_harness_url(websocket_url: &str) -> bool {
         .any(|(key, value)| key == "role" && value == "harness")
 }
 
+#[cfg(not(target_os = "ios"))]
 fn stdio_command_process(stdio_command: &StdioExecServerCommand) -> Command {
     let mut command = Command::new(&stdio_command.program);
     command.args(&stdio_command.args);

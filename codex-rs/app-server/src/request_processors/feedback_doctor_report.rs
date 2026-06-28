@@ -9,18 +9,27 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
+#[cfg(not(target_os = "ios"))]
 use std::time::Duration;
 
 use codex_core::config::Config;
+#[cfg(not(target_os = "ios"))]
 use codex_feedback::DOCTOR_REPORT_ATTACHMENT_FILENAME;
 use codex_feedback::FeedbackAttachment;
+#[cfg(not(target_os = "ios"))]
 use serde_json::Value;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
+#[cfg(not(target_os = "ios"))]
 use tracing::warn;
 
+#[cfg(not(target_os = "ios"))]
 const DOCTOR_FEEDBACK_REPORT_TIMEOUT: Duration = Duration::from_secs(25);
+#[cfg(not(target_os = "ios"))]
 const MAX_DOCTOR_TAG_VALUE_LEN: usize = 256;
 
 /// Redacted doctor report data that can be merged into a feedback upload.
@@ -37,6 +46,15 @@ pub(crate) struct DoctorFeedbackReport {
 /// Failure to spawn Codex, finish before the timeout, or parse JSON means the
 /// feedback upload proceeds without the doctor report. Callers should merge the
 /// returned tags without overriding explicit client-provided tags.
+#[cfg(target_os = "ios")]
+pub(crate) async fn doctor_feedback_report(
+    _config: &Config,
+    _workspace: &Path,
+) -> Option<DoctorFeedbackReport> {
+    None
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(crate) async fn doctor_feedback_report(
     config: &Config,
     workspace: &Path,
@@ -103,6 +121,7 @@ pub(crate) async fn doctor_feedback_report(
     })
 }
 
+#[cfg(not(target_os = "ios"))]
 fn doctor_command(executable: &Path, cwd: &Path, codex_home: &Path) -> Command {
     let mut command = Command::new(executable);
     command
@@ -116,6 +135,7 @@ fn doctor_command(executable: &Path, cwd: &Path, codex_home: &Path) -> Command {
     command
 }
 
+#[cfg(not(target_os = "ios"))]
 fn doctor_report_tags(report: &Value) -> BTreeMap<String, String> {
     let mut tags = BTreeMap::new();
     if let Some(overall_status) = report.get("overallStatus").and_then(Value::as_str) {
@@ -171,6 +191,7 @@ fn doctor_report_tags(report: &Value) -> BTreeMap<String, String> {
 }
 
 /// Iterates checks from both the current keyed JSON shape and older array reports.
+#[cfg(not(target_os = "ios"))]
 fn check_values(checks: &Value) -> Box<dyn Iterator<Item = &Value> + '_> {
     match checks {
         Value::Array(values) => Box::new(values.iter()),
@@ -179,6 +200,7 @@ fn check_values(checks: &Value) -> Box<dyn Iterator<Item = &Value> + '_> {
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 fn truncate_tag_value(value: &str) -> String {
     if value.chars().count() <= MAX_DOCTOR_TAG_VALUE_LEN {
         return value.to_string();
@@ -190,7 +212,7 @@ fn truncate_tag_value(value: &str) -> String {
     format!("{prefix}...")
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "ios")))]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
