@@ -1,6 +1,5 @@
 use std::io::ErrorKind;
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -13,13 +12,18 @@ use crate::shell::ShellType;
 use crate::shell::get_shell;
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(not(target_os = "ios"))]
 use anyhow::anyhow;
 use anyhow::bail;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use codex_utils_absolute_path::AbsolutePathBuf;
+#[cfg(not(target_os = "ios"))]
+use std::process::Stdio;
 use tokio::fs;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
 use tracing::Instrument;
 use tracing::info_span;
@@ -280,35 +284,44 @@ async fn run_script_with_timeout(
     use_login_shell: bool,
     cwd: &AbsolutePathBuf,
 ) -> Result<String> {
-    let args = shell.derive_exec_args(script, use_login_shell);
-    let shell_name = shell.name();
-
-    // Handler is kept as guard to control the drop. The `mut` pattern is required because .args()
-    // returns a ref of handler.
-    let mut handler = Command::new(&args[0]);
-    handler.args(&args[1..]);
-    handler.stdin(Stdio::null());
-    handler.current_dir(cwd);
-    #[cfg(unix)]
-    unsafe {
-        handler.pre_exec(|| {
-            codex_utils_pty::process_group::detach_from_tty()?;
-            Ok(())
-        });
-    }
-    handler.kill_on_drop(true);
-    let output = timeout(snapshot_timeout, handler.output())
-        .await
-        .map_err(|_| anyhow!("Snapshot command timed out for {shell_name}"))?
-        .with_context(|| format!("Failed to execute {shell_name}"))?;
-
-    if !output.status.success() {
-        let status = output.status;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("Snapshot command exited with status {status}: {stderr}");
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (shell, script, snapshot_timeout, use_login_shell, cwd);
+        bail!("shell snapshot commands are not supported on iOS");
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    #[cfg(not(target_os = "ios"))]
+    {
+        let args = shell.derive_exec_args(script, use_login_shell);
+        let shell_name = shell.name();
+
+        // Handler is kept as guard to control the drop. The `mut` pattern is required because .args()
+        // returns a ref of handler.
+        let mut handler = Command::new(&args[0]);
+        handler.args(&args[1..]);
+        handler.stdin(Stdio::null());
+        handler.current_dir(cwd);
+        #[cfg(unix)]
+        unsafe {
+            handler.pre_exec(|| {
+                codex_utils_pty::process_group::detach_from_tty()?;
+                Ok(())
+            });
+        }
+        handler.kill_on_drop(true);
+        let output = timeout(snapshot_timeout, handler.output())
+            .await
+            .map_err(|_| anyhow!("Snapshot command timed out for {shell_name}"))?
+            .with_context(|| format!("Failed to execute {shell_name}"))?;
+
+        if !output.status.success() {
+            let status = output.status;
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Snapshot command exited with status {status}: {stderr}");
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
 }
 
 fn excluded_exports_regex() -> String {

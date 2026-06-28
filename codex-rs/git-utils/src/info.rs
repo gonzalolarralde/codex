@@ -11,8 +11,11 @@ use futures::future::join_all;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::Duration as TokioDuration;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
 use ts_rs::TS;
 
@@ -58,7 +61,9 @@ pub async fn get_git_repo_root_with_fs(
 }
 
 /// Timeout for git commands to prevent freezing on large repositories
+#[cfg(not(target_os = "ios"))]
 const GIT_COMMAND_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
+#[cfg(not(target_os = "ios"))]
 const DISABLED_HOOKS_PATH: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, TS)]
@@ -406,6 +411,7 @@ async fn run_git_command_with_timeout(args: &[&str], cwd: &Path) -> Option<std::
     .await
 }
 
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 struct LocalFsmonitorProbeRunner<'a> {
     git: &'a Path,
     cwd: &'a Path,
@@ -413,13 +419,22 @@ struct LocalFsmonitorProbeRunner<'a> {
 
 impl crate::FsmonitorProbeRunner for LocalFsmonitorProbeRunner<'_> {
     async fn run_probe(&mut self, args: &[&str]) -> Option<Vec<u8>> {
-        // Both probes are fast, bounded metadata queries that do not inspect the
-        // worktree or index, so do not reduce the requested command's timeout.
-        let mut command = Command::new(self.git);
-        command.args(args).current_dir(self.cwd).kill_on_drop(true);
-        match timeout(GIT_COMMAND_TIMEOUT, command.output()).await {
-            Ok(Ok(output)) if output.status.success() => Some(output.stdout),
-            _ => None,
+        #[cfg(target_os = "ios")]
+        {
+            let _ = args;
+            return None;
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            // Both probes are fast, bounded metadata queries that do not inspect the
+            // worktree or index, so do not reduce the requested command's timeout.
+            let mut command = Command::new(self.git);
+            command.args(args).current_dir(self.cwd).kill_on_drop(true);
+            match timeout(GIT_COMMAND_TIMEOUT, command.output()).await {
+                Ok(Ok(output)) if output.status.success() => Some(output.stdout),
+                _ => None,
+            }
         }
     }
 }
@@ -435,21 +450,30 @@ async fn run_git_command_with_timeout_from(
     cwd: &Path,
     fsmonitor: crate::FsmonitorOverride,
 ) -> Option<std::process::Output> {
-    let mut command = Command::new(git);
-    command
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        // Keep internal Git commands independent of repository-selected hooks
-        // and fsmonitor helpers while preserving built-in fsmonitor acceleration.
-        .args(["-c", &format!("core.hooksPath={DISABLED_HOOKS_PATH}")])
-        .args(["-c", fsmonitor.git_config_arg()])
-        .args(args)
-        .current_dir(cwd)
-        .kill_on_drop(true);
-    let result = timeout(GIT_COMMAND_TIMEOUT, command.output()).await;
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (git, args, cwd, fsmonitor);
+        return None;
+    }
 
-    match result {
-        Ok(Ok(output)) => Some(output),
-        _ => None, // Timeout or error
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut command = Command::new(git);
+        command
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            // Keep internal Git commands independent of repository-selected hooks
+            // and fsmonitor helpers while preserving built-in fsmonitor acceleration.
+            .args(["-c", &format!("core.hooksPath={DISABLED_HOOKS_PATH}")])
+            .args(["-c", fsmonitor.git_config_arg()])
+            .args(args)
+            .current_dir(cwd)
+            .kill_on_drop(true);
+        let result = timeout(GIT_COMMAND_TIMEOUT, command.output()).await;
+
+        match result {
+            Ok(Ok(output)) => Some(output),
+            _ => None, // Timeout or error
+        }
     }
 }
 

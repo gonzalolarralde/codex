@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code, unused_imports))]
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -186,6 +188,19 @@ impl LocalProcess {
         *notification_sender = notifications;
     }
 
+    #[cfg(target_os = "ios")]
+    async fn start_process(
+        &self,
+        params: ExecParams,
+    ) -> Result<(ExecResponse, watch::Sender<u64>, ExecProcessEventLog), JSONRPCErrorError> {
+        let _ = self;
+        let _ = params;
+        Err(invalid_request(
+            "process execution is not supported on iOS".to_string(),
+        ))
+    }
+
+    #[cfg(not(target_os = "ios"))]
     async fn start_process(
         &self,
         params: ExecParams,

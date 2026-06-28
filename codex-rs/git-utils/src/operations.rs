@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(not(target_os = "ios"))]
 use std::process::Command;
 
 use crate::GitToolingError;
@@ -110,27 +111,41 @@ where
         args_vec.push(OsString::from(arg.as_ref()));
     }
     let command_string = build_command_string(&args_vec);
-    let mut command = Command::new("git");
-    command.current_dir(dir);
-    if let Some(envs) = env {
-        for (key, value) in envs {
-            command.env(key, value);
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (dir, env);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!("git command `{command_string}` is not supported on iOS"),
+        )
+        .into());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut command = Command::new("git");
+        command.current_dir(dir);
+        if let Some(envs) = env {
+            for (key, value) in envs {
+                command.env(key, value);
+            }
         }
-    }
-    command.args(&args_vec);
-    let output = command.output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(GitToolingError::GitCommand {
+        command.args(&args_vec);
+        let output = command.output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(GitToolingError::GitCommand {
+                command: command_string,
+                status: output.status,
+                stderr,
+            });
+        }
+        Ok(GitRun {
             command: command_string,
-            status: output.status,
-            stderr,
-        });
+            output,
+        })
     }
-    Ok(GitRun {
-        command: command_string,
-        output,
-    })
 }
 
 fn build_command_string(args: &[OsString]) -> String {

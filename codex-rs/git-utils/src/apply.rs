@@ -8,6 +8,7 @@
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+#[cfg(not(target_os = "ios"))]
 use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
@@ -124,21 +125,33 @@ pub fn apply_git_patch(req: &ApplyGitRequest) -> io::Result<ApplyGitResult> {
 }
 
 fn resolve_git_root(cwd: &Path) -> io::Result<PathBuf> {
-    let out = std::process::Command::new("git")
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .current_dir(cwd)
-        .output()?;
-    let code = out.status.code().unwrap_or(-1);
-    if code != 0 {
-        return Err(io::Error::other(format!(
-            "not a git repository (exit {}): {}",
-            code,
-            String::from_utf8_lossy(&out.stderr)
-        )));
+    #[cfg(target_os = "ios")]
+    {
+        let _ = cwd;
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "git apply is not supported on iOS",
+        ));
     }
-    let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(PathBuf::from(root))
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let out = std::process::Command::new("git")
+            .arg("rev-parse")
+            .arg("--show-toplevel")
+            .current_dir(cwd)
+            .output()?;
+        let code = out.status.code().unwrap_or(-1);
+        if code != 0 {
+            return Err(io::Error::other(format!(
+                "not a git repository (exit {}): {}",
+                code,
+                String::from_utf8_lossy(&out.stderr)
+            )));
+        }
+        let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Ok(PathBuf::from(root))
+    }
 }
 
 fn write_temp_patch(diff: &str) -> io::Result<(tempfile::TempDir, PathBuf)> {
@@ -149,18 +162,30 @@ fn write_temp_patch(diff: &str) -> io::Result<(tempfile::TempDir, PathBuf)> {
 }
 
 fn run_git(cwd: &Path, git_cfg: &[String], args: &[String]) -> io::Result<(i32, String, String)> {
-    let mut cmd = std::process::Command::new("git");
-    for p in git_cfg {
-        cmd.arg(p);
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (cwd, git_cfg, args);
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "git apply is not supported on iOS",
+        ));
     }
-    for a in args {
-        cmd.arg(a);
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut cmd = std::process::Command::new("git");
+        for p in git_cfg {
+            cmd.arg(p);
+        }
+        for a in args {
+            cmd.arg(a);
+        }
+        let out = cmd.current_dir(cwd).output()?;
+        let code = out.status.code().unwrap_or(-1);
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        Ok((code, stdout, stderr))
     }
-    let out = cmd.current_dir(cwd).output()?;
-    let code = out.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    Ok((code, stdout, stderr))
 }
 
 fn quote_shell(s: &str) -> String {
@@ -318,27 +343,39 @@ fn unescape_c_string(input: &str) -> String {
 
 /// Stage only the files that actually exist on disk for the given diff.
 pub fn stage_paths(git_root: &Path, diff: &str) -> io::Result<()> {
-    let paths = extract_paths_from_patch(diff);
-    let mut existing: Vec<String> = Vec::new();
-    for p in paths {
-        let joined = git_root.join(&p);
-        if std::fs::symlink_metadata(&joined).is_ok() {
-            existing.push(p);
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (git_root, diff);
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "git staging is not supported on iOS",
+        ));
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let paths = extract_paths_from_patch(diff);
+        let mut existing: Vec<String> = Vec::new();
+        for p in paths {
+            let joined = git_root.join(&p);
+            if std::fs::symlink_metadata(&joined).is_ok() {
+                existing.push(p);
+            }
         }
+        if existing.is_empty() {
+            return Ok(());
+        }
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("add");
+        cmd.arg("--");
+        for p in &existing {
+            cmd.arg(OsStr::new(p));
+        }
+        let out = cmd.current_dir(git_root).output()?;
+        let _code = out.status.code().unwrap_or(-1);
+        // We do not hard fail staging; best-effort is OK. Return Ok even on non-zero.
+        Ok(())
     }
-    if existing.is_empty() {
-        return Ok(());
-    }
-    let mut cmd = std::process::Command::new("git");
-    cmd.arg("add");
-    cmd.arg("--");
-    for p in &existing {
-        cmd.arg(OsStr::new(p));
-    }
-    let out = cmd.current_dir(git_root).output()?;
-    let _code = out.status.code().unwrap_or(-1);
-    // We do not hard fail staging; best-effort is OK. Return Ok even on non-zero.
-    Ok(())
 }
 
 // ============ Parser ported from VS Code (TS) ============

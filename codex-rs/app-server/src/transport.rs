@@ -33,6 +33,7 @@ pub(crate) use codex_app_server_transport::prepare_control_socket_path;
 pub(crate) use codex_app_server_transport::start_control_socket_acceptor;
 pub(crate) use codex_app_server_transport::start_remote_control;
 pub(crate) use codex_app_server_transport::start_stdio_connection;
+pub(crate) use codex_app_server_transport::start_stdio_connection_with_io_and_shutdown;
 pub(crate) use codex_app_server_transport::start_websocket_acceptor;
 pub use codex_app_server_transport::take_remote_control_disabled_env;
 

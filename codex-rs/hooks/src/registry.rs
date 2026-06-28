@@ -223,11 +223,20 @@ pub fn list_hooks(config: HooksConfig) -> HookListOutcome {
 }
 
 pub fn command_from_argv(argv: &[String]) -> Option<Command> {
-    let (program, args) = argv.split_first()?;
-    if program.is_empty() {
+    #[cfg(target_os = "ios")]
+    {
+        let _ = argv;
         return None;
     }
-    let mut command = Command::new(program);
-    command.args(args);
-    Some(command)
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let (program, args) = argv.split_first()?;
+        if program.is_empty() {
+            return None;
+        }
+        let mut command = Command::new(program);
+        command.args(args);
+        Some(command)
+    }
 }

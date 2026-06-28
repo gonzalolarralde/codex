@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code, unused_imports))]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
@@ -140,6 +142,19 @@ impl InternalProcessIdExt for InternalProcessId {
 }
 
 impl CommandExecManager {
+    #[cfg(target_os = "ios")]
+    pub(crate) async fn start(
+        &self,
+        params: StartCommandExecParams,
+    ) -> Result<(), JSONRPCErrorError> {
+        let _ = self;
+        let _ = params;
+        Err(invalid_request(
+            "command/exec is not supported on iOS".to_string(),
+        ))
+    }
+
+    #[cfg(not(target_os = "ios"))]
     pub(crate) async fn start(
         &self,
         params: StartCommandExecParams,

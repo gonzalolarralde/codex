@@ -1,10 +1,16 @@
 use std::path::Path;
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
+#[cfg(not(target_os = "ios"))]
 use std::time::Duration;
+#[cfg(not(target_os = "ios"))]
 use std::time::Instant;
 
+#[cfg(not(target_os = "ios"))]
 use tokio::io::AsyncWriteExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
 
 use super::CommandShell;
@@ -21,6 +27,32 @@ pub(crate) struct CommandRunResult {
     pub error: Option<String>,
 }
 
+#[cfg(target_os = "ios")]
+pub(crate) async fn run_command(
+    shell: &CommandShell,
+    handler: &ConfiguredHandler,
+    input_json: &str,
+    cwd: &Path,
+) -> CommandRunResult {
+    let _ = shell;
+    let _ = input_json;
+    let _ = cwd;
+    let started_at = chrono::Utc::now().timestamp();
+    CommandRunResult {
+        started_at,
+        completed_at: started_at,
+        duration_ms: 0,
+        exit_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        error: Some(format!(
+            "hook command `{}` is not supported on iOS",
+            handler.command
+        )),
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(crate) async fn run_command(
     shell: &CommandShell,
     handler: &ConfiguredHandler,
@@ -100,6 +132,7 @@ pub(crate) async fn run_command(
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
     let mut command = if shell.program.is_empty() {
         default_shell_command()
@@ -116,6 +149,7 @@ fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
     command
 }
 
+#[cfg(not(target_os = "ios"))]
 fn default_shell_command() -> Command {
     #[cfg(windows)]
     {

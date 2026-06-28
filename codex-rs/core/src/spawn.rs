@@ -2,9 +2,12 @@ use codex_network_proxy::NetworkProxy;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
 use std::path::PathBuf;
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
 use tokio::process::Child;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tracing::trace;
 
 use codex_protocol::permissions::NetworkSandboxPolicy;
@@ -37,6 +40,7 @@ pub enum StdioPolicy {
 /// For now, we take `NetworkSandboxPolicy` as a parameter to spawn_child()
 /// because we need to determine whether to set the
 /// `CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR` environment variable.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub(crate) struct SpawnChildRequest<'a> {
     pub program: PathBuf,
     pub args: Vec<String>,
@@ -48,6 +52,16 @@ pub(crate) struct SpawnChildRequest<'a> {
     pub env: HashMap<String, String>,
 }
 
+#[cfg(target_os = "ios")]
+pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io::Result<Child> {
+    let _ = request;
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "process execution is not supported on iOS",
+    ))
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io::Result<Child> {
     let SpawnChildRequest {
         program,

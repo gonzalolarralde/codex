@@ -33,6 +33,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub(crate) struct CommandShell {
     pub program: String,
     pub args: Vec<String>,
