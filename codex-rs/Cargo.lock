@@ -2034,6 +2034,7 @@ dependencies = [
  "codex-hooks",
  "codex-http-client",
  "codex-image-generation-extension",
+ "codex-ios-platform",
  "codex-login",
  "codex-mcp",
  "codex-mcp-extension",
@@ -2790,6 +2791,7 @@ dependencies = [
  "codex-http-client",
  "codex-image-generation-extension",
  "codex-install-context",
+ "codex-ios-platform",
  "codex-login",
  "codex-mcp",
  "codex-memories-read",
@@ -3031,6 +3033,7 @@ dependencies = [
  "codex-exec-server-test-support",
  "codex-file-system",
  "codex-http-client",
+ "codex-ios-platform",
  "codex-network-proxy",
  "codex-otel",
  "codex-protocol",
@@ -3284,6 +3287,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "codex-file-system",
+ "codex-ios-platform",
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-path-uri",
@@ -3419,6 +3423,7 @@ dependencies = [
  "async-channel",
  "chrono",
  "codex-config",
+ "codex-ios-platform",
  "codex-plugin",
  "codex-protocol",
  "codex-utils-absolute-path",
@@ -3507,6 +3512,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "codex-ios-platform"
+version = "0.0.0"
+dependencies = [
+ "pretty_assertions",
 ]
 
 [[package]]
@@ -4081,6 +4093,7 @@ dependencies = [
  "codex-config",
  "codex-exec-server",
  "codex-http-client",
+ "codex-ios-platform",
  "codex-keyring-store",
  "codex-network-proxy",
  "codex-protocol",

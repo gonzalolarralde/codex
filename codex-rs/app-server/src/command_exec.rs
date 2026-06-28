@@ -148,10 +148,20 @@ impl CommandExecManager {
         params: StartCommandExecParams,
     ) -> Result<(), JSONRPCErrorError> {
         let _ = self;
-        let _ = params;
-        Err(invalid_request(
-            "command/exec is not supported on iOS".to_string(),
-        ))
+        let payload = codex_ios_platform::string_payload(&[
+            ("method", "command/exec".to_string()),
+            ("cwd", params.exec_request.cwd.to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_COMMAND_EXEC,
+            &payload,
+        )
+        .unwrap_or_else(|| {
+            codex_ios_platform::generic_unsupported_message(
+                codex_ios_platform::OPERATION_COMMAND_EXEC,
+            )
+        });
+        Err(invalid_request(message))
     }
 
     #[cfg(not(target_os = "ios"))]

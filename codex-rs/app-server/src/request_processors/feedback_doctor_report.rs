@@ -48,9 +48,17 @@ pub(crate) struct DoctorFeedbackReport {
 /// returned tags without overriding explicit client-provided tags.
 #[cfg(target_os = "ios")]
 pub(crate) async fn doctor_feedback_report(
-    _config: &Config,
-    _workspace: &Path,
+    config: &Config,
+    workspace: &Path,
 ) -> Option<DoctorFeedbackReport> {
+    let payload = codex_ios_platform::string_payload(&[
+        ("codexHome", config.codex_home.display().to_string()),
+        ("workspace", workspace.display().to_string()),
+    ]);
+    let _ = codex_ios_platform::unsupported_message(
+        codex_ios_platform::OPERATION_FEEDBACK_DOCTOR_REPORT,
+        &payload,
+    );
     None
 }
 

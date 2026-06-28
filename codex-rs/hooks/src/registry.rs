@@ -312,7 +312,12 @@ pub(crate) fn command_from_argv(
 ) -> Option<Command> {
     #[cfg(target_os = "ios")]
     {
-        let _ = (argv, environment);
+        let _ = environment;
+        let payload = codex_ios_platform::string_payload(&[("argv", argv.join(" "))]);
+        let _ = codex_ios_platform::unsupported_message(
+            codex_ios_platform::OPERATION_HOOK_COMMAND,
+            &payload,
+        );
         return None;
     }
 
