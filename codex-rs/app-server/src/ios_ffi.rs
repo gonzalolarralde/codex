@@ -72,7 +72,7 @@ pub unsafe extern "C" fn codex_app_server_ios_start_with_stdio_fds(
             runtime.block_on(run_main_with_stdio_io(
                 Arg0DispatchPaths::default(),
                 CliConfigOverrides::default(),
-                LoaderOverrides::default(),
+                LoaderOverrides::without_managed_config_for_tests(),
                 /*strict_config*/ false,
                 /*default_analytics_enabled*/ false,
                 input,

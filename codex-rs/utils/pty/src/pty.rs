@@ -125,6 +125,7 @@ fn platform_native_pty_system() -> Box<dyn portable_pty::PtySystem + Send> {
 
 /// Spawn a process attached to a PTY, preserving selected inherited file
 /// descriptors across exec on Unix.
+#[cfg_attr(target_os = "ios", allow(unreachable_code))]
 pub async fn spawn_process(
     program: &str,
     args: &[String],
@@ -136,6 +137,23 @@ pub async fn spawn_process(
 ) -> Result<SpawnedProcess> {
     if program.is_empty() {
         anyhow::bail!("missing program for PTY spawn");
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = inherited_fds;
+        return crate::ios::spawn_process(
+            codex_ios_platform::ProcessPurpose::ProcessSpawn,
+            program,
+            args,
+            cwd,
+            env,
+            arg0,
+            true,
+            true,
+            size,
+        )
+        .await;
     }
 
     #[cfg(not(unix))]

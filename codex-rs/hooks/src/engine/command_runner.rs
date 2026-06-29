@@ -210,13 +210,11 @@ pub(crate) async fn run_command(
         ("command", command.to_string()),
         ("cwd", cwd.display().to_string()),
     ]);
-    let message = codex_ios_platform::unsupported_message(
+    let message = codex_ios_platform::unsupported_error(
         codex_ios_platform::OPERATION_HOOK_COMMAND,
         &payload,
     )
-    .unwrap_or_else(|| {
-        codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_HOOK_COMMAND)
-    });
+    .to_string();
     let started_at = chrono::Utc::now().timestamp();
     HandlerRunResult {
         started_at,

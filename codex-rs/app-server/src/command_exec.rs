@@ -142,29 +142,6 @@ impl InternalProcessIdExt for InternalProcessId {
 }
 
 impl CommandExecManager {
-    #[cfg(target_os = "ios")]
-    pub(crate) async fn start(
-        &self,
-        params: StartCommandExecParams,
-    ) -> Result<(), JSONRPCErrorError> {
-        let _ = self;
-        let payload = codex_ios_platform::string_payload(&[
-            ("method", "command/exec".to_string()),
-            ("cwd", params.exec_request.cwd.to_string()),
-        ]);
-        let message = codex_ios_platform::unsupported_message(
-            codex_ios_platform::OPERATION_COMMAND_EXEC,
-            &payload,
-        )
-        .unwrap_or_else(|| {
-            codex_ios_platform::generic_unsupported_message(
-                codex_ios_platform::OPERATION_COMMAND_EXEC,
-            )
-        });
-        Err(invalid_request(message))
-    }
-
-    #[cfg(not(target_os = "ios"))]
     pub(crate) async fn start(
         &self,
         params: StartCommandExecParams,
@@ -292,6 +269,21 @@ impl CommandExecManager {
                 CommandExecSession::Active { control_tx },
             );
         }
+        #[cfg(target_os = "ios")]
+        let spawned = codex_utils_pty::spawn_ios_process(
+            codex_ios_platform::ProcessPurpose::CommandExec,
+            program,
+            args,
+            cwd.as_path(),
+            &env,
+            &arg0,
+            tty,
+            stream_stdin,
+            size.unwrap_or_default(),
+        )
+        .await;
+
+        #[cfg(not(target_os = "ios"))]
         let spawned = if tty {
             codex_utils_pty::spawn_pty_process(
                 program,
