@@ -286,23 +286,14 @@ async fn run_script_with_timeout(
 ) -> Result<String> {
     #[cfg(target_os = "ios")]
     {
-        let _ = snapshot_timeout;
-        let payload = codex_ios_platform::string_payload(&[
-            ("shell", shell.name().to_string()),
-            ("script", script.to_string()),
-            ("useLoginShell", use_login_shell.to_string()),
-            ("cwd", cwd.display().to_string()),
-        ]);
-        let message = codex_ios_platform::unsupported_message(
-            codex_ios_platform::OPERATION_SHELL_SNAPSHOT,
-            &payload,
+        return codex_ios_platform::shell_snapshot(
+            shell.name(),
+            script,
+            &cwd.display().to_string(),
+            use_login_shell,
+            snapshot_timeout.as_millis().try_into().unwrap_or(u64::MAX),
         )
-        .unwrap_or_else(|| {
-            codex_ios_platform::generic_unsupported_message(
-                codex_ios_platform::OPERATION_SHELL_SNAPSHOT,
-            )
-        });
-        bail!(message);
+        .map_err(Into::into);
     }
 
     #[cfg(not(target_os = "ios"))]

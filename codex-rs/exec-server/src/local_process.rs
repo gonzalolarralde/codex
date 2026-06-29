@@ -199,15 +199,11 @@ impl LocalProcess {
             ("argv", params.argv.join(" ")),
             ("cwd", params.cwd.to_string()),
         ]);
-        let message = codex_ios_platform::unsupported_message(
+        let message = codex_ios_platform::unsupported_error(
             codex_ios_platform::OPERATION_PROCESS_SPAWN,
             &payload,
         )
-        .unwrap_or_else(|| {
-            codex_ios_platform::generic_unsupported_message(
-                codex_ios_platform::OPERATION_PROCESS_SPAWN,
-            )
-        });
+        .to_string();
         Err(invalid_request(message))
     }
 

@@ -9,11 +9,13 @@ use codex_code_mode_protocol::CodeModeSessionProviderFuture;
 use codex_code_mode_protocol::CodeModeSessionResultFuture;
 use codex_code_mode_protocol::ExecuteRequest;
 use codex_code_mode_protocol::NotificationFuture;
+use codex_code_mode_protocol::RuntimeResponse;
 use codex_code_mode_protocol::StartedCell;
 use codex_code_mode_protocol::ToolInvocationFuture;
 use codex_code_mode_protocol::WaitOutcome;
 use codex_code_mode_protocol::WaitRequest;
 use serde_json::json;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 fn disabled_message(action: &str, payload: serde_json::Value) -> String {
@@ -22,15 +24,19 @@ fn disabled_message(action: &str, payload: serde_json::Value) -> String {
         "payload": payload,
     }))
     .unwrap_or_else(|_| "{}".to_string());
-    codex_ios_platform::unsupported_message(
+    codex_ios_platform::unsupported_error(
         codex_ios_platform::OPERATION_JAVASCRIPT_RUNTIME,
         &payload_json,
     )
-    .unwrap_or_else(|| {
-        codex_ios_platform::generic_unsupported_message(
-            codex_ios_platform::OPERATION_JAVASCRIPT_RUNTIME,
-        )
-    })
+    .to_string()
+}
+
+fn response_cell_id(response: &RuntimeResponse) -> CellId {
+    match response {
+        RuntimeResponse::Yielded { cell_id, .. }
+        | RuntimeResponse::Terminated { cell_id, .. }
+        | RuntimeResponse::Result { cell_id, .. } => cell_id.clone(),
+    }
 }
 
 pub struct NoopCodeModeSessionDelegate;
@@ -93,6 +99,20 @@ impl CodeModeService {
     }
 
     pub async fn execute(&self, request: ExecuteRequest) -> Result<StartedCell, String> {
+        let request_json = serde_json::to_string(&request).map_err(|err| err.to_string())?;
+        match codex_ios_platform::code_mode_execute(&request_json) {
+            Ok(response_json) => {
+                let response: RuntimeResponse =
+                    serde_json::from_str(&response_json).map_err(|err| err.to_string())?;
+                let cell_id = response_cell_id(&response);
+                let (response_tx, response_rx) = oneshot::channel();
+                let _ = response_tx.send(Ok(response));
+                return Ok(StartedCell::from_result_receiver(cell_id, response_rx));
+            }
+            Err(codex_ios_platform::IosPlatformError::Error(message)) => return Err(message),
+            Err(codex_ios_platform::IosPlatformError::Unsupported(_)) => {}
+        }
+
         Err(disabled_message(
             "execute",
             json!({
@@ -106,6 +126,14 @@ impl CodeModeService {
     }
 
     pub async fn wait(&self, request: WaitRequest) -> Result<WaitOutcome, String> {
+        match codex_ios_platform::code_mode_wait(request.cell_id.as_str(), request.yield_time_ms) {
+            Ok(response_json) => {
+                return serde_json::from_str(&response_json).map_err(|err| err.to_string());
+            }
+            Err(codex_ios_platform::IosPlatformError::Error(message)) => return Err(message),
+            Err(codex_ios_platform::IosPlatformError::Unsupported(_)) => {}
+        }
+
         Err(disabled_message(
             "wait",
             json!({
@@ -116,6 +144,14 @@ impl CodeModeService {
     }
 
     pub async fn terminate(&self, cell_id: CellId) -> Result<WaitOutcome, String> {
+        match codex_ios_platform::code_mode_terminate(cell_id.as_str()) {
+            Ok(response_json) => {
+                return serde_json::from_str(&response_json).map_err(|err| err.to_string());
+            }
+            Err(codex_ios_platform::IosPlatformError::Error(message)) => return Err(message),
+            Err(codex_ios_platform::IosPlatformError::Unsupported(_)) => {}
+        }
+
         Err(disabled_message(
             "terminate",
             json!({

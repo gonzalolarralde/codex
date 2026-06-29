@@ -114,21 +114,54 @@ where
 
     #[cfg(target_os = "ios")]
     {
-        let _ = env;
-        let payload = codex_ios_platform::string_payload(&[
-            ("command", format!("git {command_string}")),
-            ("cwd", dir.display().to_string()),
-        ]);
-        let message = codex_ios_platform::unsupported_message(
-            codex_ios_platform::OPERATION_GIT_COMMAND,
-            &payload,
-        )
-        .unwrap_or_else(|| {
-            codex_ios_platform::generic_unsupported_message(
-                codex_ios_platform::OPERATION_GIT_COMMAND,
-            )
-        });
-        return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, message).into());
+        use std::os::unix::process::ExitStatusExt;
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct IosGitRunResponse {
+            exit_code: i32,
+            stdout: String,
+            stderr: String,
+        }
+
+        let env = env
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            key.to_string_lossy().to_string(),
+                            value.to_string_lossy().to_string(),
+                        )
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let args = args_vec
+            .iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let response = codex_ios_platform::git_run(&dir.display().to_string(), "git", &args, &env)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Unsupported, err.to_string()))?;
+        let response: IosGitRunResponse = serde_json::from_str(&response)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(response.exit_code << 8),
+            stdout: response.stdout.into_bytes(),
+            stderr: response.stderr.into_bytes(),
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(GitToolingError::GitCommand {
+                command: command_string,
+                status: output.status,
+                stderr,
+            });
+        }
+        Ok(GitRun {
+            command: command_string,
+            output,
+        })
     }
 
     #[cfg(not(target_os = "ios"))]

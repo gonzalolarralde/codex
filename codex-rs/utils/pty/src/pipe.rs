@@ -21,6 +21,8 @@ use crate::process::ChildTerminator;
 use crate::process::ProcessHandle;
 use crate::process::ProcessSignal;
 use crate::process::SpawnedProcess;
+#[cfg(target_os = "ios")]
+use crate::process::TerminalSize;
 use crate::process::exit_code_from_status;
 
 #[cfg(target_os = "linux")]
@@ -109,6 +111,7 @@ enum PipeStdinMode {
     Null,
 }
 
+#[cfg_attr(target_os = "ios", allow(unreachable_code))]
 async fn spawn_process_with_stdin_mode(
     program: &str,
     args: &[String],
@@ -120,6 +123,23 @@ async fn spawn_process_with_stdin_mode(
 ) -> Result<SpawnedProcess> {
     if program.is_empty() {
         anyhow::bail!("missing program for pipe spawn");
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = inherited_fds;
+        return crate::ios::spawn_process(
+            codex_ios_platform::ProcessPurpose::ProcessSpawn,
+            program,
+            args,
+            cwd,
+            env,
+            arg0,
+            false,
+            matches!(stdin_mode, PipeStdinMode::Piped),
+            TerminalSize::default(),
+        )
+        .await;
     }
 
     #[cfg(not(unix))]

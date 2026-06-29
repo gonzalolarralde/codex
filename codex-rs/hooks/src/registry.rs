@@ -226,7 +226,7 @@ pub fn command_from_argv(argv: &[String]) -> Option<Command> {
     #[cfg(target_os = "ios")]
     {
         let payload = codex_ios_platform::string_payload(&[("argv", argv.join(" "))]);
-        let _ = codex_ios_platform::unsupported_message(
+        let _ = codex_ios_platform::unsupported_error(
             codex_ios_platform::OPERATION_HOOK_COMMAND,
             &payload,
         );

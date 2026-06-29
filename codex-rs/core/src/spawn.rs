@@ -59,13 +59,11 @@ pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io
         ("args", request.args.join(" ")),
         ("cwd", request.cwd.display().to_string()),
     ]);
-    let message = codex_ios_platform::unsupported_message(
+    let message = codex_ios_platform::unsupported_error(
         codex_ios_platform::OPERATION_PROCESS_SPAWN,
         &payload,
     )
-    .unwrap_or_else(|| {
-        codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_PROCESS_SPAWN)
-    });
+    .to_string();
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         message,

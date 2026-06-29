@@ -40,13 +40,11 @@ pub(crate) async fn run_command(
         ("command", handler.command.clone()),
         ("cwd", cwd.display().to_string()),
     ]);
-    let message = codex_ios_platform::unsupported_message(
+    let message = codex_ios_platform::unsupported_error(
         codex_ios_platform::OPERATION_HOOK_COMMAND,
         &payload,
     )
-    .unwrap_or_else(|| {
-        codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_HOOK_COMMAND)
-    });
+    .to_string();
     let started_at = chrono::Utc::now().timestamp();
     CommandRunResult {
         started_at,

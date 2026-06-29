@@ -241,27 +241,22 @@ impl LocalStdioServerLauncher {
         command: StdioServerCommand,
         fallback_cwd: PathBuf,
     ) -> io::Result<StdioServerTransport> {
-        let payload = codex_ios_platform::string_payload(&[
-            ("program", command.program.to_string_lossy().to_string()),
-            (
-                "args",
-                command
-                    .args
-                    .iter()
-                    .map(|arg| arg.to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ),
-            ("cwd", fallback_cwd.display().to_string()),
-        ]);
-        let message = codex_ios_platform::unsupported_message(
-            codex_ios_platform::OPERATION_MCP_STDIO,
-            &payload,
-        )
-        .unwrap_or_else(|| {
-            codex_ios_platform::generic_unsupported_message(codex_ios_platform::OPERATION_MCP_STDIO)
-        });
-        Err(io::Error::new(io::ErrorKind::Unsupported, message))
+        let args = command
+            .args
+            .iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        match codex_ios_platform::mcp_stdio_launch(
+            &command.program.to_string_lossy(),
+            &args,
+            &fallback_cwd.display().to_string(),
+        ) {
+            Ok(()) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Swift MCP stdio launch accepted but byte-channel transport is not wired",
+            )),
+            Err(err) => Err(io::Error::new(io::ErrorKind::Unsupported, err.to_string())),
+        }
     }
 
     #[cfg(not(target_os = "ios"))]

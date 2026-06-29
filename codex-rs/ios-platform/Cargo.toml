@@ -10,5 +10,8 @@ workspace = true
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 
+[target.'cfg(target_os = "ios")'.dependencies]
+tokio = { workspace = true, features = ["sync"] }
+
 [lib]
 doctest = false

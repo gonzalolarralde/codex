@@ -303,15 +303,11 @@ impl ExecServerClient {
         {
             let payload =
                 codex_ios_platform::string_payload(&[("command", args.command.program.clone())]);
-            let message = codex_ios_platform::unsupported_message(
+            let message = codex_ios_platform::unsupported_error(
                 codex_ios_platform::OPERATION_PROCESS_SPAWN,
                 &payload,
             )
-            .unwrap_or_else(|| {
-                codex_ios_platform::generic_unsupported_message(
-                    codex_ios_platform::OPERATION_PROCESS_SPAWN,
-                )
-            });
+            .to_string();
             return Err(ExecServerError::Protocol(message));
         }
 

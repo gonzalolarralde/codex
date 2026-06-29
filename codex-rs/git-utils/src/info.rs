@@ -428,7 +428,7 @@ impl crate::FsmonitorProbeRunner for LocalFsmonitorProbeRunner<'_> {
                 ),
                 ("cwd", self.cwd.display().to_string()),
             ]);
-            let _ = codex_ios_platform::unsupported_message(
+            let _ = codex_ios_platform::unsupported_error(
                 codex_ios_platform::OPERATION_GIT_COMMAND,
                 &payload,
             );
@@ -467,7 +467,7 @@ async fn run_git_command_with_timeout_from(
             ("command", format!("{} {}", git.display(), args.join(" "))),
             ("cwd", cwd.display().to_string()),
         ]);
-        let _ = codex_ios_platform::unsupported_message(
+        let _ = codex_ios_platform::unsupported_error(
             codex_ios_platform::OPERATION_GIT_COMMAND,
             &payload,
         );

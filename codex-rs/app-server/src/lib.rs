@@ -17,6 +17,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Result as IoResult;
+#[cfg(target_os = "ios")]
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -79,6 +81,8 @@ use tracing::warn;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::Targets;
+#[cfg(target_os = "ios")]
+use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::Registry;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -140,6 +144,65 @@ enum LogFormat {
 }
 
 type StderrLogLayer = Box<dyn Layer<Registry> + Send + Sync + 'static>;
+
+#[cfg(target_os = "ios")]
+#[derive(Clone, Copy)]
+struct IosLogMakeWriter;
+
+#[cfg(target_os = "ios")]
+#[derive(Default)]
+struct IosLogWriter {
+    buffer: Vec<u8>,
+}
+
+#[cfg(target_os = "ios")]
+impl<'a> MakeWriter<'a> for IosLogMakeWriter {
+    type Writer = IosLogWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        IosLogWriter::default()
+    }
+}
+
+#[cfg(target_os = "ios")]
+impl Write for IosLogWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.buffer.extend_from_slice(bytes);
+        while let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line = self.buffer.drain(..=newline).collect::<Vec<_>>();
+            Self::emit_line(&line[..line.len().saturating_sub(1)]);
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.flush_buffer();
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "ios")]
+impl Drop for IosLogWriter {
+    fn drop(&mut self) {
+        self.flush_buffer();
+    }
+}
+
+#[cfg(target_os = "ios")]
+impl IosLogWriter {
+    fn flush_buffer(&mut self) {
+        if self.buffer.is_empty() {
+            return;
+        }
+        let line = std::mem::take(&mut self.buffer);
+        Self::emit_line(&line);
+    }
+
+    fn emit_line(bytes: &[u8]) {
+        let message = String::from_utf8_lossy(bytes);
+        codex_ios_platform::log_message("debug", "codex.app-server.stderr", message.as_ref());
+    }
+}
 
 fn configured_thread_config_loader(config: &Config) -> Arc<dyn ThreadConfigLoader> {
     match config.experimental_thread_config_endpoint.as_deref() {
@@ -801,16 +864,27 @@ async fn run_main_with_transport_runtime(
     // Install a simple subscriber so `tracing` output is visible. Users can
     // control the log level with `RUST_LOG` and switch to JSON logs with
     // `LOG_FORMAT=json`.
+    #[cfg(target_os = "ios")]
+    let stderr_fmt: StderrLogLayer = match log_format_from_env() {
+        LogFormat::Json => tracing_subscriber::fmt::layer()
+            .json()
+            .with_writer(IosLogMakeWriter)
+            .with_filter(EnvFilter::from_default_env())
+            .boxed(),
+        LogFormat::Default => tracing_subscriber::fmt::layer()
+            .with_writer(IosLogMakeWriter)
+            .with_filter(EnvFilter::from_default_env())
+            .boxed(),
+    };
+    #[cfg(not(target_os = "ios"))]
     let stderr_fmt: StderrLogLayer = match log_format_from_env() {
         LogFormat::Json => tracing_subscriber::fmt::layer()
             .json()
             .with_writer(std::io::stderr)
-            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
             .with_filter(EnvFilter::from_default_env())
             .boxed(),
         LogFormat::Default => tracing_subscriber::fmt::layer()
             .with_writer(std::io::stderr)
-            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
             .with_filter(EnvFilter::from_default_env())
             .boxed(),
     };

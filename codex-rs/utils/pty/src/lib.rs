@@ -1,4 +1,6 @@
 pub mod pipe;
+#[cfg(target_os = "ios")]
+mod ios;
 mod process;
 pub mod process_group;
 pub mod pty;
@@ -27,6 +29,8 @@ pub use process::TerminalSize;
 pub use process::combine_output_receivers;
 /// Adapt an externally-driven process into the standard spawned-process handle.
 pub use process::spawn_from_driver;
+#[cfg(target_os = "ios")]
+pub use ios::spawn_process as spawn_ios_process;
 /// Backwards-compatible alias for ProcessHandle.
 pub type ExecCommandSession = ProcessHandle;
 /// Backwards-compatible alias for SpawnedProcess.

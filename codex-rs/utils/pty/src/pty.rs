@@ -131,11 +131,29 @@ pub async fn spawn_process(
     arg0: &Option<String>,
     size: TerminalSize,
 ) -> Result<SpawnedProcess> {
+    #[cfg(target_os = "ios")]
+    {
+        return crate::ios::spawn_process(
+            codex_ios_platform::ProcessPurpose::ProcessSpawn,
+            program,
+            args,
+            cwd,
+            env,
+            arg0,
+            true,
+            true,
+            size,
+        )
+        .await;
+    }
+
+    #[cfg(not(target_os = "ios"))]
     spawn_process_with_inherited_fds(program, args, cwd, env, arg0, size, &[]).await
 }
 
 /// Spawn a process attached to a PTY, preserving any inherited file
 /// descriptors listed in `inherited_fds` across exec on Unix.
+#[cfg_attr(target_os = "ios", allow(unreachable_code))]
 pub async fn spawn_process_with_inherited_fds(
     program: &str,
     args: &[String],
@@ -147,6 +165,23 @@ pub async fn spawn_process_with_inherited_fds(
 ) -> Result<SpawnedProcess> {
     if program.is_empty() {
         anyhow::bail!("missing program for PTY spawn");
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = inherited_fds;
+        return crate::ios::spawn_process(
+            codex_ios_platform::ProcessPurpose::ProcessSpawn,
+            program,
+            args,
+            cwd,
+            env,
+            arg0,
+            true,
+            true,
+            size,
+        )
+        .await;
     }
 
     #[cfg(not(unix))]
