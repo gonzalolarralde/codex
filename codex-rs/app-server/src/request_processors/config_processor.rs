@@ -65,6 +65,8 @@ const BACKGROUND_PAGINATED_ROLLOUT_MIGRATION_FEATURE: &str =
 const SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT: &[&str] = &[
     "auth_elicitation",
     BACKGROUND_PAGINATED_ROLLOUT_MIGRATION_FEATURE,
+    "code_mode",
+    "code_mode_only",
     "mcp_2026_07_28",
     "memories",
     "mentions_v2",
