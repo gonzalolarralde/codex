@@ -1170,6 +1170,11 @@ impl Session {
                         )
                     })?
                 }
+            } else if cfg!(target_os = "ios") {
+                shell::Shell {
+                    shell_type: shell::ShellType::Sh,
+                    shell_path: std::path::PathBuf::from("/bin/sh"),
+                }
             } else {
                 shell::default_user_shell()
             };
