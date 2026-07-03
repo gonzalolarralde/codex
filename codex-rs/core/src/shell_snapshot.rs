@@ -9,6 +9,7 @@ use crate::rollout::list::find_thread_path_by_id_str;
 use crate::session::turn_context::TurnEnvironment;
 use crate::shell::Shell;
 use crate::shell::ShellType;
+#[cfg(not(target_os = "ios"))]
 use crate::shell::get_shell;
 use anyhow::Context;
 use anyhow::Result;
@@ -207,6 +208,18 @@ async fn write_shell_snapshot(
     if shell_type == ShellType::PowerShell || shell_type == ShellType::Cmd {
         bail!("Shell snapshot not supported yet for {shell_type:?}");
     }
+    #[cfg(target_os = "ios")]
+    let shell = Shell {
+        shell_type,
+        shell_path: std::path::PathBuf::from(match shell_type {
+            ShellType::Zsh => "/bin/zsh",
+            ShellType::Bash => "/bin/bash",
+            ShellType::Sh => "/bin/sh",
+            ShellType::PowerShell | ShellType::Cmd => unreachable!(),
+        }),
+    };
+
+    #[cfg(not(target_os = "ios"))]
     let shell = get_shell(shell_type, /*path*/ None)
         .with_context(|| format!("No available shell for {shell_type:?}"))?;
 
