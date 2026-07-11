@@ -251,6 +251,18 @@ void codex_ios_platform_process_failed(
     CodexIosHandle handle,
     const char *message);
 
+CodexIosStatus codex_ios_code_mode_invoke_tool(
+    CodexIosHandle session_handle,
+    CodexIosString invocation_json,
+    CodexIosErrorBuffer response_json);
+
+CodexIosStatus codex_ios_code_mode_notify(
+    CodexIosHandle session_handle,
+    CodexIosString call_id,
+    CodexIosString cell_id,
+    CodexIosString text,
+    CodexIosErrorBuffer error);
+
 uint64_t codex_app_server_ios_start_with_stdio_fds(
     int input_read_fd,
     int output_write_fd);
