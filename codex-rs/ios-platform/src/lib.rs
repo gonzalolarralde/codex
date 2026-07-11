@@ -13,10 +13,10 @@ use std::fmt;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::ptr;
-use std::sync::OnceLock;
-use std::sync::RwLock;
 #[cfg(target_os = "ios")]
 use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::RwLock;
 #[cfg(target_os = "ios")]
 use std::sync::atomic::AtomicU64;
 #[cfg(target_os = "ios")]
@@ -480,7 +480,10 @@ fn write_buffer(buffer: CodexIosErrorBuffer, message: &str) -> usize {
 }
 
 fn read_buffer(buffer: &[u8]) -> String {
-    let len = buffer.iter().position(|byte| *byte == 0).unwrap_or(buffer.len());
+    let len = buffer
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(buffer.len());
     String::from_utf8_lossy(&buffer[..len]).into_owned()
 }
 
@@ -528,7 +531,10 @@ impl StringArena {
                 let len = value.as_bytes().len();
                 self.strings.push(value);
                 CodexIosString {
-                    ptr: self.strings.last().map_or(ptr::null(), |value| value.as_ptr()),
+                    ptr: self
+                        .strings
+                        .last()
+                        .map_or(ptr::null(), |value| value.as_ptr()),
                     len,
                 }
             }
@@ -540,7 +546,10 @@ impl StringArena {
     }
 }
 
-fn string_array(arena: &mut StringArena, values: &[String]) -> (Vec<CodexIosString>, CodexIosStringArray) {
+fn string_array(
+    arena: &mut StringArena,
+    values: &[String],
+) -> (Vec<CodexIosString>, CodexIosStringArray) {
     let c_values = values
         .iter()
         .map(|value| arena.push(value))
@@ -639,8 +648,8 @@ fn process_registry() -> &'static Mutex<HashMap<CodexIosHandle, PendingProcess>>
 
 #[cfg(target_os = "ios")]
 pub fn process_spawn(config: ProcessSpawnConfig<'_>) -> Result<IosProcess, IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
     let callback = callbacks
         .process_spawn
         .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
@@ -725,8 +734,8 @@ pub fn process_write_stdin(
     bytes: &[u8],
     close_stdin: bool,
 ) -> Result<(), IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
     let callback = callbacks
         .process_write_stdin
         .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
@@ -747,8 +756,8 @@ pub fn process_resize_pty(
     handle: CodexIosHandle,
     size: TerminalSize,
 ) -> Result<(), IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
     let callback = callbacks
         .process_resize_pty
         .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
@@ -767,8 +776,8 @@ pub fn process_resize_pty(
 
 #[cfg(target_os = "ios")]
 pub fn process_terminate(handle: CodexIosHandle) -> Result<(), IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
     let callback = callbacks
         .process_terminate
         .ok_or_else(|| unsupported_error(OPERATION_PROCESS_SPAWN, "{}"))?;
@@ -777,14 +786,33 @@ pub fn process_terminate(handle: CodexIosHandle) -> Result<(), IosPlatformError>
     })
 }
 
-fn status_to_result<F>(operation: &str, payload_json: &str, callback: F) -> Result<(), IosPlatformError>
+fn status_to_result<F>(
+    operation: &str,
+    payload_json: &str,
+    callback: F,
+) -> Result<(), IosPlatformError>
 where
     F: FnOnce(CodexIosErrorBuffer) -> CodexIosStatus,
 {
     call_with_output(operation, payload_json, callback).map(|_| ())
 }
 
-pub fn code_mode_execute(request_json: &str) -> Result<String, IosPlatformError> {
+pub fn code_mode_create_session(session_handle: CodexIosHandle) -> Result<(), IosPlatformError> {
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+    let callback = callbacks
+        .code_mode_create_session
+        .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+    call_with_output(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
+        callback(callbacks.context, session_handle, buffer)
+    })
+    .map(|_| ())
+}
+
+pub fn code_mode_execute(
+    session_handle: CodexIosHandle,
+    request_json: &str,
+) -> Result<String, IosPlatformError> {
     let callbacks = current_callbacks()
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, request_json))?;
     let callback = callbacks
@@ -792,34 +820,60 @@ pub fn code_mode_execute(request_json: &str) -> Result<String, IosPlatformError>
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, request_json))?;
     let mut arena = StringArena::new();
     let request = arena.push(request_json);
-    call_with_output(OPERATION_JAVASCRIPT_RUNTIME, request_json, |buffer| unsafe {
-        callback(callbacks.context, 0, request, buffer)
-    })
+    call_with_output(
+        OPERATION_JAVASCRIPT_RUNTIME,
+        request_json,
+        |buffer| unsafe { callback(callbacks.context, session_handle, request, buffer) },
+    )
 }
 
-pub fn code_mode_wait(cell_id: &str, yield_time_ms: u64) -> Result<String, IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+pub fn code_mode_wait(
+    session_handle: CodexIosHandle,
+    cell_id: &str,
+    yield_time_ms: u64,
+) -> Result<String, IosPlatformError> {
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let callback = callbacks
         .code_mode_wait
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let mut arena = StringArena::new();
     let cell_id = arena.push(cell_id);
     call_with_output(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
-        callback(callbacks.context, 0, cell_id, yield_time_ms, buffer)
+        callback(
+            callbacks.context,
+            session_handle,
+            cell_id,
+            yield_time_ms,
+            buffer,
+        )
     })
 }
 
-pub fn code_mode_terminate(cell_id: &str) -> Result<String, IosPlatformError> {
-    let callbacks = current_callbacks()
-        .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+pub fn code_mode_terminate(
+    session_handle: CodexIosHandle,
+    cell_id: &str,
+) -> Result<String, IosPlatformError> {
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let callback = callbacks
         .code_mode_terminate
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let mut arena = StringArena::new();
     let cell_id = arena.push(cell_id);
     call_with_output(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
-        callback(callbacks.context, 0, cell_id, buffer)
+        callback(callbacks.context, session_handle, cell_id, buffer)
+    })
+}
+
+pub fn code_mode_shutdown(session_handle: CodexIosHandle) -> Result<(), IosPlatformError> {
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+    let callback = callbacks
+        .code_mode_shutdown
+        .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
+    status_to_result(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
+        callback(callbacks.context, session_handle, buffer)
     })
 }
 
@@ -835,7 +889,8 @@ pub fn shell_snapshot(
         ("script", script.to_string()),
         ("cwd", cwd.to_string()),
     ]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_SHELL_SNAPSHOT, &payload))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_SHELL_SNAPSHOT, &payload))?;
     let callback = callbacks
         .shell_snapshot
         .ok_or_else(|| unsupported_error(OPERATION_SHELL_SNAPSHOT, &payload))?;
@@ -862,7 +917,8 @@ pub fn git_run(
         ("command", format!("{} {}", program, args.join(" "))),
         ("cwd", cwd.to_string()),
     ]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_COMMAND, &payload))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_COMMAND, &payload))?;
     let callback = callbacks
         .git_run
         .ok_or_else(|| unsupported_error(OPERATION_GIT_COMMAND, &payload))?;
@@ -891,7 +947,8 @@ pub fn git_apply(
         ("command", format!("git {}", args.join(" "))),
         ("cwd", cwd.to_string()),
     ]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_APPLY, &payload))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_APPLY, &payload))?;
     let callback = callbacks
         .git_apply_patch
         .ok_or_else(|| unsupported_error(OPERATION_GIT_APPLY, &payload))?;
@@ -915,7 +972,8 @@ pub fn git_stage(git_root: &str, diff: &str) -> Result<(), IosPlatformError> {
         ("gitRoot", git_root.to_string()),
         ("diffBytes", diff.len().to_string()),
     ]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_STAGE, &payload))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_GIT_STAGE, &payload))?;
     let callback = callbacks
         .git_stage_paths
         .ok_or_else(|| unsupported_error(OPERATION_GIT_STAGE, &payload))?;
@@ -935,7 +993,8 @@ pub fn mcp_stdio_launch(program: &str, args: &[String], cwd: &str) -> Result<(),
         ("args", args.join(" ")),
         ("cwd", cwd.to_string()),
     ]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_MCP_STDIO, &payload))?;
+    let callbacks =
+        current_callbacks().ok_or_else(|| unsupported_error(OPERATION_MCP_STDIO, &payload))?;
     let callback = callbacks
         .mcp_stdio_launch
         .ok_or_else(|| unsupported_error(OPERATION_MCP_STDIO, &payload))?;
@@ -954,7 +1013,8 @@ pub fn mcp_stdio_launch(program: &str, args: &[String], cwd: &str) -> Result<(),
 
 pub fn doctor_report(codex_home: &str) -> Result<Option<String>, IosPlatformError> {
     let payload = string_payload(&[("codexHome", codex_home.to_string())]);
-    let callbacks = current_callbacks().ok_or_else(|| unsupported_error(OPERATION_FEEDBACK_DOCTOR_REPORT, &payload))?;
+    let callbacks = current_callbacks()
+        .ok_or_else(|| unsupported_error(OPERATION_FEEDBACK_DOCTOR_REPORT, &payload))?;
     let callback = callbacks
         .doctor_report
         .ok_or_else(|| unsupported_error(OPERATION_FEEDBACK_DOCTOR_REPORT, &payload))?;
@@ -962,9 +1022,11 @@ pub fn doctor_report(codex_home: &str) -> Result<Option<String>, IosPlatformErro
     let request = CodexIosDoctorReportRequest {
         codex_home: arena.push(codex_home),
     };
-    let output = call_with_output(OPERATION_FEEDBACK_DOCTOR_REPORT, &payload, |buffer| unsafe {
-        callback(callbacks.context, &request, buffer)
-    })?;
+    let output = call_with_output(
+        OPERATION_FEEDBACK_DOCTOR_REPORT,
+        &payload,
+        |buffer| unsafe { callback(callbacks.context, &request, buffer) },
+    )?;
     Ok((!output.is_empty()).then_some(output))
 }
 
