@@ -788,13 +788,24 @@ fn reject_sandbox_context(sandbox: Option<&FileSystemSandboxContext>) -> io::Res
 }
 
 fn reject_platform_sandbox_context(sandbox: Option<&FileSystemSandboxContext>) -> io::Result<()> {
+    // The iOS app process is already confined to its application container and
+    // cannot launch Codex's desktop sandbox helper. Direct reads are therefore
+    // the platform-sandboxed implementation on iOS.
+    #[cfg(target_os = "ios")]
+    {
+        let _ = sandbox;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "ios"))]
     if sandbox.is_some_and(FileSystemSandboxContext::should_run_in_sandbox) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "sandboxed filesystem operations require configured runtime paths",
         ));
     }
-    Ok(())
+    #[cfg(not(target_os = "ios"))]
+    return Ok(());
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> io::Result<()> {

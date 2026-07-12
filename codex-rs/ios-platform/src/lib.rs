@@ -495,7 +495,19 @@ fn call_with_output<F>(
 where
     F: FnOnce(CodexIosErrorBuffer) -> CodexIosStatus,
 {
-    let mut output = vec![0_u8; 64 * 1024];
+    call_with_output_capacity(operation, payload_json, 64 * 1024, callback)
+}
+
+fn call_with_output_capacity<F>(
+    operation: &str,
+    payload_json: &str,
+    capacity: usize,
+    callback: F,
+) -> Result<String, IosPlatformError>
+where
+    F: FnOnce(CodexIosErrorBuffer) -> CodexIosStatus,
+{
+    let mut output = vec![0_u8; capacity];
     let buffer = CodexIosErrorBuffer {
         message_buffer: output.as_mut_ptr().cast::<c_char>(),
         message_buffer_len: output.len(),
@@ -820,9 +832,10 @@ pub fn code_mode_execute(
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, request_json))?;
     let mut arena = StringArena::new();
     let request = arena.push(request_json);
-    call_with_output(
+    call_with_output_capacity(
         OPERATION_JAVASCRIPT_RUNTIME,
         request_json,
+        16 * 1024 * 1024,
         |buffer| unsafe { callback(callbacks.context, session_handle, request, buffer) },
     )
 }
@@ -839,15 +852,20 @@ pub fn code_mode_wait(
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let mut arena = StringArena::new();
     let cell_id = arena.push(cell_id);
-    call_with_output(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
-        callback(
-            callbacks.context,
-            session_handle,
-            cell_id,
-            yield_time_ms,
-            buffer,
-        )
-    })
+    call_with_output_capacity(
+        OPERATION_JAVASCRIPT_RUNTIME,
+        "{}",
+        16 * 1024 * 1024,
+        |buffer| unsafe {
+            callback(
+                callbacks.context,
+                session_handle,
+                cell_id,
+                yield_time_ms,
+                buffer,
+            )
+        },
+    )
 }
 
 pub fn code_mode_terminate(
@@ -861,9 +879,12 @@ pub fn code_mode_terminate(
         .ok_or_else(|| unsupported_error(OPERATION_JAVASCRIPT_RUNTIME, "{}"))?;
     let mut arena = StringArena::new();
     let cell_id = arena.push(cell_id);
-    call_with_output(OPERATION_JAVASCRIPT_RUNTIME, "{}", |buffer| unsafe {
-        callback(callbacks.context, session_handle, cell_id, buffer)
-    })
+    call_with_output_capacity(
+        OPERATION_JAVASCRIPT_RUNTIME,
+        "{}",
+        16 * 1024 * 1024,
+        |buffer| unsafe { callback(callbacks.context, session_handle, cell_id, buffer) },
+    )
 }
 
 pub fn code_mode_shutdown(session_handle: CodexIosHandle) -> Result<(), IosPlatformError> {
@@ -1161,6 +1182,16 @@ mod tests {
         CodexIosStatus::Accepted
     }
 
+    unsafe extern "C" fn large_code_mode_execute(
+        _context: *mut c_void,
+        _session_handle: CodexIosHandle,
+        _request: CodexIosString,
+        response: CodexIosErrorBuffer,
+    ) -> CodexIosStatus {
+        write_buffer(response, &"x".repeat(2 * 1024 * 1024));
+        CodexIosStatus::Accepted
+    }
+
     fn test_callbacks() -> CodexIosPlatformCallbacks {
         CodexIosPlatformCallbacks {
             version: CODEX_IOS_PLATFORM_CALLBACKS_VERSION,
@@ -1204,6 +1235,18 @@ mod tests {
             Some("swift handled process.spawn".to_string())
         );
 
+        set_callbacks(None);
+    }
+
+    #[test]
+    fn code_mode_execute_accepts_multi_megabyte_responses() {
+        let mut callbacks = test_callbacks();
+        callbacks.code_mode_execute = Some(large_code_mode_execute);
+        set_callbacks(Some(callbacks));
+
+        let response = code_mode_execute(7, "{}").expect("large code mode response");
+
+        assert_eq!(response.len(), 2 * 1024 * 1024);
         set_callbacks(None);
     }
 
