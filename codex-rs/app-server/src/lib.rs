@@ -643,10 +643,7 @@ where
     R: AsyncRead + Send + Unpin + 'static,
     W: AsyncWrite + Send + Unpin + 'static,
 {
-    let shutdown_token = runtime_options
-        .shutdown_token
-        .clone()
-        .unwrap_or_else(CancellationToken::new);
+    let shutdown_token = runtime_options.shutdown_token.clone().unwrap_or_default();
     runtime_options.shutdown_token = Some(shutdown_token.clone());
     let task = tokio::spawn(run_main_with_stdio_io(
         arg0_paths,
@@ -940,10 +937,7 @@ async fn run_main_with_transport_runtime(
     }
     let installation_id = resolve_installation_id(&config.codex_home).await?;
     let transport_shutdown_token = CancellationToken::new();
-    let app_shutdown_token = runtime_options
-        .shutdown_token
-        .clone()
-        .unwrap_or_else(CancellationToken::new);
+    let app_shutdown_token = runtime_options.shutdown_token.clone().unwrap_or_default();
     let mut transport_accept_handles = Vec::<JoinHandle<()>>::new();
 
     let single_client_mode = matches!(&transport, AppServerTransport::Stdio);
@@ -1219,7 +1213,7 @@ async fn run_main_with_transport_runtime(
                         let _ = outbound_control_tx
                             .send(OutboundControlEvent::DisconnectAll)
                             .await;
-                        break;
+                        break "app_shutdown_requested";
                     }
                     event = transport_event_rx.recv() => {
                         let Some(event) = event else {

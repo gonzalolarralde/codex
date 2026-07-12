@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::AppServerRuntimeOptions;
 use crate::AppServerWebsocketAuthSettings;
+use crate::CodeModeHostTransport;
 use crate::PluginStartupTasks;
 use crate::RemoteControlStartupMode;
 use crate::run_main_with_stdio_io;
@@ -80,6 +81,7 @@ pub unsafe extern "C" fn codex_app_server_ios_start_with_stdio_fds(
                 SessionSource::VSCode,
                 AppServerWebsocketAuthSettings::default(),
                 AppServerRuntimeOptions {
+                    code_mode_host_transport: CodeModeHostTransport::Local,
                     plugin_startup_tasks: PluginStartupTasks::Skip,
                     remote_control_startup_mode: RemoteControlStartupMode::DisabledEphemeral,
                     install_shutdown_signal_handler: false,

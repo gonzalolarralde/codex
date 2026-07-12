@@ -179,15 +179,10 @@ fn run_git(cwd: &Path, git_cfg: &[String], args: &[String]) -> io::Result<(i32, 
             stderr: String,
         }
 
-        let response = codex_ios_platform::git_apply(
-            &cwd.display().to_string(),
-            git_cfg,
-            args,
-            "",
-        )
-        .map_err(|err| io::Error::new(io::ErrorKind::Unsupported, err.to_string()))?;
-        let response: IosGitRunResponse =
-            serde_json::from_str(&response).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let response = codex_ios_platform::git_apply(&cwd.display().to_string(), git_cfg, args, "")
+            .map_err(|err| io::Error::new(io::ErrorKind::Unsupported, err.to_string()))?;
+        let response: IosGitRunResponse = serde_json::from_str(&response)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         return Ok((response.exit_code, response.stdout, response.stderr));
     }
 
@@ -370,7 +365,9 @@ pub fn stage_paths(git_root: &Path, diff: &str) -> io::Result<()> {
         let message = codex_ios_platform::git_stage(&git_root.display().to_string(), diff)
             .err()
             .map(|err| err.to_string())
-            .unwrap_or_else(|| "Swift git staging accepted but local index update is unavailable".to_string());
+            .unwrap_or_else(|| {
+                "Swift git staging accepted but local index update is unavailable".to_string()
+            });
         return Err(io::Error::new(io::ErrorKind::Unsupported, message));
     }
 

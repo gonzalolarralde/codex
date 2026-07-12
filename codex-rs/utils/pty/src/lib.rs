@@ -1,6 +1,6 @@
-pub mod pipe;
 #[cfg(target_os = "ios")]
 mod ios;
+pub mod pipe;
 mod process;
 pub mod process_group;
 pub mod pty;
@@ -15,6 +15,8 @@ mod windows_input;
 
 pub const DEFAULT_OUTPUT_BYTES_CAP: usize = 1024 * 1024;
 
+#[cfg(target_os = "ios")]
+pub use ios::spawn_process as spawn_ios_process;
 /// Spawn a non-interactive process using regular pipes for stdin/stdout/stderr.
 pub use pipe::spawn_process as spawn_pipe_process;
 /// Spawn a non-interactive process using regular pipes, but close stdin immediately.
@@ -33,8 +35,6 @@ pub use process::TerminalSize;
 pub use process::combine_output_receivers;
 /// Adapt an externally-driven process into the standard spawned-process handle.
 pub use process::spawn_from_driver;
-#[cfg(target_os = "ios")]
-pub use ios::spawn_process as spawn_ios_process;
 /// Backwards-compatible alias for ProcessHandle.
 pub type ExecCommandSession = ProcessHandle;
 /// Backwards-compatible alias for SpawnedProcess.

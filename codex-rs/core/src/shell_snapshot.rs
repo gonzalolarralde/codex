@@ -12,7 +12,6 @@ use crate::shell::ShellType;
 use crate::shell::get_shell;
 use anyhow::Context;
 use anyhow::Result;
-#[cfg(not(target_os = "ios"))]
 use anyhow::anyhow;
 use anyhow::bail;
 use codex_exec_server::Environment;

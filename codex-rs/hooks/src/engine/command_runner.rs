@@ -37,16 +37,23 @@ use super::ConfiguredHandler;
 use super::ConfiguredHandlerKind;
 use super::HandlerRunResult;
 use super::dispatcher::ParsedHandler;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::hook_event_name_label;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::hook_execution_mode_label;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::hook_handler_type_label;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::hook_scope_label;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::hook_source_label;
+#[cfg(not(target_os = "ios"))]
 use super::dispatcher::scope_for_event;
 use crate::output_spill::AdditionalContext;
 use crate::output_spill::HookOutputSpiller;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookCompletedEvent;
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::protocol::HookHandlerType;
 use codex_protocol::protocol::HookOutputEntry;
 use codex_protocol::protocol::HookOutputEntryKind;
@@ -210,11 +217,9 @@ pub(crate) async fn run_command(
         ("command", command.to_string()),
         ("cwd", cwd.display().to_string()),
     ]);
-    let message = codex_ios_platform::unsupported_error(
-        codex_ios_platform::OPERATION_HOOK_COMMAND,
-        &payload,
-    )
-    .to_string();
+    let message =
+        codex_ios_platform::unsupported_error(codex_ios_platform::OPERATION_HOOK_COMMAND, &payload)
+            .to_string();
     let started_at = chrono::Utc::now().timestamp();
     HandlerRunResult {
         started_at,
