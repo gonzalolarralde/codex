@@ -1218,6 +1218,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn unsupported_message_returns_none_without_callback() {
         set_callbacks(None);
 
@@ -1225,6 +1226,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn unsupported_message_uses_callback_override() {
         let mut callbacks = test_callbacks();
         callbacks.unsupported_operation = Some(override_message);
@@ -1239,6 +1241,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn code_mode_execute_accepts_multi_megabyte_responses() {
         let mut callbacks = test_callbacks();
         callbacks.code_mode_execute = Some(large_code_mode_execute);
@@ -1251,6 +1254,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn typed_shell_snapshot_callback_returns_output() {
         let mut callbacks = test_callbacks();
         callbacks.shell_snapshot = Some(shell_snapshot);
@@ -1265,6 +1269,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn typed_callback_falls_back_to_unsupported_message() {
         let mut callbacks = test_callbacks();
         callbacks.unsupported_operation = Some(override_message);

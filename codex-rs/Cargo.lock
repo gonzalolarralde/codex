@@ -3520,6 +3520,7 @@ name = "codex-ios-platform"
 version = "0.0.0"
 dependencies = [
  "pretty_assertions",
+ "serial_test",
  "tokio",
 ]
 
