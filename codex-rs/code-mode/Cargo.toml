@@ -31,5 +31,10 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+codex-ios-platform = { workspace = true }
 pretty_assertions = { workspace = true }
+serial_test = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+codex-ios-platform = { workspace = true }

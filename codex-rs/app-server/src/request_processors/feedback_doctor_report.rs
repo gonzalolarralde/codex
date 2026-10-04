@@ -39,6 +39,16 @@ pub(crate) struct DoctorFeedbackReport {
 /// Failure to spawn Codex, finish before the timeout, or parse JSON means the
 /// feedback upload proceeds without the doctor report. Callers should merge the
 /// returned tags without overriding explicit client-provided tags.
+#[cfg(target_os = "ios")]
+pub(crate) async fn doctor_feedback_report(
+    config: &Config,
+    _workspace: &Path,
+) -> Option<DoctorFeedbackReport> {
+    let _ = codex_ios_platform::doctor_report(&config.codex_home.display().to_string());
+    None
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(crate) async fn doctor_feedback_report(
     config: &Config,
     workspace: &Path,
@@ -105,6 +115,7 @@ pub(crate) async fn doctor_feedback_report(
     })
 }
 
+#[cfg(not(target_os = "ios"))]
 fn doctor_command(executable: &Path, cwd: &Path, codex_home: &Path) -> Command {
     let mut command = Command::from(codex_utils_process::background_command(executable));
     command
@@ -118,6 +129,7 @@ fn doctor_command(executable: &Path, cwd: &Path, codex_home: &Path) -> Command {
     command
 }
 
+#[cfg(not(target_os = "ios"))]
 fn doctor_report_tags(report: &Value) -> BTreeMap<String, String> {
     let mut tags = BTreeMap::new();
     if let Some(overall_status) = report.get("overallStatus").and_then(Value::as_str) {
@@ -173,6 +185,7 @@ fn doctor_report_tags(report: &Value) -> BTreeMap<String, String> {
 }
 
 /// Iterates checks from both the current keyed JSON shape and older array reports.
+#[cfg(not(target_os = "ios"))]
 fn check_values(checks: &Value) -> Box<dyn Iterator<Item = &Value> + '_> {
     match checks {
         Value::Array(values) => Box::new(values.iter()),
@@ -181,6 +194,7 @@ fn check_values(checks: &Value) -> Box<dyn Iterator<Item = &Value> + '_> {
     }
 }
 
+#[cfg(not(target_os = "ios"))]
 fn truncate_tag_value(value: &str) -> String {
     if value.chars().count() <= MAX_DOCTOR_TAG_VALUE_LEN {
         return value.to_string();
@@ -192,7 +206,7 @@ fn truncate_tag_value(value: &str) -> String {
     format!("{prefix}...")
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "ios")))]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;

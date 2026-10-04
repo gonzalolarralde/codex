@@ -6,9 +6,11 @@
 //! mode via [`ApplyGitRequest::preflight`] and inspect the resulting paths to
 //! learn what would change before applying for real.
 
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
 use once_cell::sync::Lazy;
 use regex::Regex;
+#[cfg(not(target_os = "ios"))]
 use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
@@ -125,24 +127,38 @@ pub fn apply_git_patch(req: &ApplyGitRequest) -> io::Result<ApplyGitResult> {
 }
 
 fn resolve_git_root(cwd: &Path) -> io::Result<PathBuf> {
-    let mut command = std::process::Command::new("git");
-    command
-        .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .current_dir(cwd);
-    scrub_non_inheritable_env_vars(&mut command);
-    let out = command.output()?;
-    let code = out.status.code().unwrap_or(-1);
-    if code != 0 {
-        return Err(io::Error::other(format!(
-            "not a git repository (exit {}): {}",
-            code,
-            String::from_utf8_lossy(&out.stderr)
-        )));
+    #[cfg(target_os = "ios")]
+    {
+        let payload = codex_ios_platform::string_payload(&[("cwd", cwd.display().to_string())]);
+        let message = codex_ios_platform::unsupported_error(
+            codex_ios_platform::OPERATION_GIT_APPLY,
+            &payload,
+        )
+        .to_string();
+        return Err(io::Error::new(io::ErrorKind::Unsupported, message));
     }
-    let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(PathBuf::from(root))
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut command = std::process::Command::new("git");
+        command
+            .args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG])
+            .arg("rev-parse")
+            .arg("--show-toplevel")
+            .current_dir(cwd);
+        scrub_non_inheritable_env_vars(&mut command);
+        let out = command.output()?;
+        let code = out.status.code().unwrap_or(-1);
+        if code != 0 {
+            return Err(io::Error::other(format!(
+                "not a git repository (exit {}): {}",
+                code,
+                String::from_utf8_lossy(&out.stderr)
+            )));
+        }
+        let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Ok(PathBuf::from(root))
+    }
 }
 
 fn write_temp_patch(diff: &str) -> io::Result<(tempfile::TempDir, PathBuf)> {
@@ -153,20 +169,40 @@ fn write_temp_patch(diff: &str) -> io::Result<(tempfile::TempDir, PathBuf)> {
 }
 
 fn run_git(cwd: &Path, git_cfg: &[String], args: &[String]) -> io::Result<(i32, String, String)> {
-    let mut cmd = std::process::Command::new("git");
-    for p in git_cfg {
-        cmd.arg(p);
+    #[cfg(target_os = "ios")]
+    {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct IosGitRunResponse {
+            exit_code: i32,
+            stdout: String,
+            stderr: String,
+        }
+
+        let response = codex_ios_platform::git_apply(&cwd.display().to_string(), git_cfg, args, "")
+            .map_err(|err| io::Error::new(io::ErrorKind::Unsupported, err.to_string()))?;
+        let response: IosGitRunResponse = serde_json::from_str(&response)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        return Ok((response.exit_code, response.stdout, response.stderr));
     }
-    cmd.args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG]);
-    for a in args {
-        cmd.arg(a);
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut cmd = std::process::Command::new("git");
+        for p in git_cfg {
+            cmd.arg(p);
+        }
+        cmd.args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG]);
+        for a in args {
+            cmd.arg(a);
+        }
+        scrub_non_inheritable_env_vars(&mut cmd);
+        let out = cmd.current_dir(cwd).output()?;
+        let code = out.status.code().unwrap_or(-1);
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        Ok((code, stdout, stderr))
     }
-    scrub_non_inheritable_env_vars(&mut cmd);
-    let out = cmd.current_dir(cwd).output()?;
-    let code = out.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    Ok((code, stdout, stderr))
 }
 
 fn quote_shell(s: &str) -> String {
@@ -324,29 +360,43 @@ fn unescape_c_string(input: &str) -> String {
 
 /// Stage only the files that actually exist on disk for the given diff.
 pub fn stage_paths(git_root: &Path, diff: &str) -> io::Result<()> {
-    let paths = extract_paths_from_patch(diff);
-    let mut existing: Vec<String> = Vec::new();
-    for p in paths {
-        let joined = git_root.join(&p);
-        if std::fs::symlink_metadata(&joined).is_ok() {
-            existing.push(p);
+    #[cfg(target_os = "ios")]
+    {
+        let message = codex_ios_platform::git_stage(&git_root.display().to_string(), diff)
+            .err()
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| {
+                "Swift git staging accepted but local index update is unavailable".to_string()
+            });
+        return Err(io::Error::new(io::ErrorKind::Unsupported, message));
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let paths = extract_paths_from_patch(diff);
+        let mut existing: Vec<String> = Vec::new();
+        for p in paths {
+            let joined = git_root.join(&p);
+            if std::fs::symlink_metadata(&joined).is_ok() {
+                existing.push(p);
+            }
         }
+        if existing.is_empty() {
+            return Ok(());
+        }
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG]);
+        cmd.arg("add");
+        cmd.arg("--");
+        for p in &existing {
+            cmd.arg(OsStr::new(p));
+        }
+        scrub_non_inheritable_env_vars(&mut cmd);
+        let out = cmd.current_dir(git_root).output()?;
+        let _code = out.status.code().unwrap_or(-1);
+        // We do not hard fail staging; best-effort is OK. Return Ok even on non-zero.
+        Ok(())
     }
-    if existing.is_empty() {
-        return Ok(());
-    }
-    let mut cmd = std::process::Command::new("git");
-    cmd.args(["-c", crate::SAFE_BARE_REPOSITORY_CONFIG]);
-    cmd.arg("add");
-    cmd.arg("--");
-    for p in &existing {
-        cmd.arg(OsStr::new(p));
-    }
-    scrub_non_inheritable_env_vars(&mut cmd);
-    let out = cmd.current_dir(git_root).output()?;
-    let _code = out.status.code().unwrap_or(-1);
-    // We do not hard fail staging; best-effort is OK. Return Ok even on non-zero.
-    Ok(())
 }
 
 // ============ Parser ported from VS Code (TS) ============
