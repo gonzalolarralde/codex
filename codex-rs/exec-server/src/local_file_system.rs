@@ -1170,6 +1170,12 @@ fn reject_platform_sandbox_context(sandbox: Option<&FileSystemSandboxContext>) -
     if sandbox.is_some_and(|context| {
         context.should_read_from_sandbox() || context.should_write_into_sandbox()
     }) {
+        #[cfg(target_os = "ios")]
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            codex_ios_platform::unsupported_error("sandbox.transform", "{}").to_string(),
+        ));
+        #[cfg(not(target_os = "ios"))]
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "sandboxed filesystem operations require configured runtime paths",
