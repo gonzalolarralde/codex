@@ -1,10 +1,15 @@
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(not(target_os = "ios"))]
 use tokio::io::AsyncBufReadExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::io::AsyncReadExt;
+#[cfg(not(target_os = "ios"))]
 use tokio::io::BufReader;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::time::Instant;
@@ -12,7 +17,9 @@ use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::timeout_at;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+#[cfg(not(target_os = "ios"))]
 use tracing::debug;
+#[cfg(not(target_os = "ios"))]
 use tracing::warn;
 
 use codex_api::AuthError;
@@ -20,6 +27,7 @@ use codex_api::AuthProvider;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::Request;
 use codex_http_client::RequestCompression;
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
 use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
 use codex_websocket_client::WebSocketConnection;
@@ -42,6 +50,7 @@ use crate::client_api::NoiseRendezvousConnectArgs;
 use crate::client_api::NoiseRendezvousConnectBundle;
 use crate::client_api::NoiseRendezvousConnectProvider;
 use crate::client_api::RemoteExecServerConnectArgs;
+#[cfg(not(target_os = "ios"))]
 use crate::client_api::StdioExecServerCommand;
 use crate::client_api::StdioExecServerConnectArgs;
 use crate::connection::JsonRpcConnection;
@@ -771,6 +780,25 @@ impl ExecServerClient {
         })
     }
 
+    #[cfg(target_os = "ios")]
+    pub(crate) async fn connect_stdio_command(
+        args: StdioExecServerConnectArgs,
+    ) -> Result<Self, ExecServerError> {
+        let payload = codex_ios_platform::string_payload(&[
+            ("program", args.command.program.clone()),
+            ("args", args.command.args.join(" ")),
+        ]);
+        Err(ExecServerError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            codex_ios_platform::unsupported_error(
+                codex_ios_platform::OPERATION_PROCESS_SPAWN,
+                &payload,
+            )
+            .to_string(),
+        )))
+    }
+
+    #[cfg(not(target_os = "ios"))]
     pub(crate) async fn connect_stdio_command(
         args: StdioExecServerConnectArgs,
     ) -> Result<Self, ExecServerError> {
@@ -837,6 +865,7 @@ fn is_rendezvous_harness_url(websocket_url: &str) -> bool {
         .any(|(key, value)| key == "role" && value == "harness")
 }
 
+#[cfg(not(target_os = "ios"))]
 fn stdio_command_process(stdio_command: &StdioExecServerCommand) -> Command {
     let mut command = Command::from(codex_utils_process::background_command(
         &stdio_command.program,

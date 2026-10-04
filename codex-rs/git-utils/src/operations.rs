@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::path::PathBuf;
 
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
 
 use crate::GitToolingError;
@@ -129,28 +130,83 @@ where
         args_vec.push(OsString::from(arg.as_ref()));
     }
     let command_string = build_command_string(&args_vec);
-    let mut command = codex_utils_process::background_command("git");
-    command.current_dir(dir);
-    if let Some(envs) = env {
-        for (key, value) in envs {
-            command.env(key, value);
+    #[cfg(target_os = "ios")]
+    {
+        use std::os::unix::process::ExitStatusExt;
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct IosGitRunResponse {
+            exit_code: i32,
+            stdout: String,
+            stderr: String,
         }
-    }
-    command.args(&args_vec);
-    scrub_non_inheritable_env_vars(&mut command);
-    let output = command.output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(GitToolingError::GitCommand {
+
+        let env = env
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|(key, value)| {
+                        (
+                            key.to_string_lossy().to_string(),
+                            value.to_string_lossy().to_string(),
+                        )
+                    })
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let args = args_vec
+            .iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let response = codex_ios_platform::git_run(&dir.display().to_string(), "git", &args, &env)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Unsupported, err.to_string()))?;
+        let response: IosGitRunResponse = serde_json::from_str(&response)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(response.exit_code << 8),
+            stdout: response.stdout.into_bytes(),
+            stderr: response.stderr.into_bytes(),
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(GitToolingError::GitCommand {
+                command: command_string,
+                status: output.status,
+                stderr,
+            });
+        }
+        Ok(GitRun {
             command: command_string,
-            status: output.status,
-            stderr,
-        });
+            output,
+        })
     }
-    Ok(GitRun {
-        command: command_string,
-        output,
-    })
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut command = codex_utils_process::background_command("git");
+        command.current_dir(dir);
+        if let Some(envs) = env {
+            for (key, value) in envs {
+                command.env(key, value);
+            }
+        }
+        command.args(&args_vec);
+        scrub_non_inheritable_env_vars(&mut command);
+        let output = command.output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(GitToolingError::GitCommand {
+                command: command_string,
+                status: output.status,
+                stderr,
+            });
+        }
+        Ok(GitRun {
+            command: command_string,
+            output,
+        })
+    }
 }
 
 fn build_command_string(args: &[OsString]) -> String {
