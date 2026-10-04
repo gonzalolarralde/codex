@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code, unused_imports))]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
@@ -267,6 +269,21 @@ impl CommandExecManager {
                 CommandExecSession::Active { control_tx },
             );
         }
+        #[cfg(target_os = "ios")]
+        let spawned = codex_utils_pty::spawn_ios_process(
+            codex_ios_platform::ProcessPurpose::CommandExec,
+            program,
+            args,
+            cwd.as_path(),
+            &env,
+            &arg0,
+            tty,
+            stream_stdin,
+            size.unwrap_or_default(),
+        )
+        .await;
+
+        #[cfg(not(target_os = "ios"))]
         let spawned = if tty {
             codex_utils_pty::spawn_pty_process(
                 program,

@@ -6,6 +6,8 @@ pub use child_command::Command;
 pub use child_command::DescriptorPolicy;
 pub use child_command::ProcessMode;
 pub use child_command::SpawnFallback;
+#[cfg(target_os = "ios")]
+mod ios;
 #[cfg(target_os = "linux")]
 mod linux_fds;
 pub mod pipe;
@@ -24,6 +26,8 @@ mod windows_input;
 
 pub const DEFAULT_OUTPUT_BYTES_CAP: usize = 1024 * 1024;
 
+#[cfg(target_os = "ios")]
+pub use ios::spawn_process as spawn_ios_process;
 /// Spawn a non-interactive process using regular pipes for stdin/stdout/stderr.
 pub use pipe::spawn_process as spawn_pipe_process;
 /// Spawn a non-interactive process using regular pipes, but close stdin immediately.

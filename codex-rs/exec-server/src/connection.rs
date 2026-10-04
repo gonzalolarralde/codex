@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code))]
+
 #[cfg(windows)]
 use std::process::Stdio;
 use std::sync::Arc;
