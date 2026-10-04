@@ -35,6 +35,7 @@ codex-file-system = { workspace = true }
 codex-file-watcher = { workspace = true }
 codex-network-proxy = { workspace = true }
 codex-otel = { workspace = true }
+codex-ios-platform = { workspace = true }
 codex-protocol = { workspace = true }
 codex-sandboxing = { workspace = true }
 codex-shell-command = { workspace = true }
