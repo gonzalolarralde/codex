@@ -1,0 +1,18 @@
+[package]
+name = "codex-ios-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serial_test = { workspace = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+tokio = { workspace = true, features = ["sync"] }
+
+[lib]
+doctest = false

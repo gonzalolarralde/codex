@@ -27,9 +27,11 @@ use codex_utils_path_uri::PathConvention;
 use codex_utils_path_uri::PathUri;
 use codex_utils_pty::Child;
 use codex_utils_pty::ChildStdin;
+#[cfg(not(target_os = "ios"))]
 use codex_utils_pty::Command;
 #[cfg(target_os = "macos")]
 use codex_utils_pty::DescriptorPolicy;
+#[cfg(not(target_os = "ios"))]
 use codex_utils_pty::SpawnFallback;
 #[cfg(any(windows, test))]
 use tokio::io::AsyncBufReadExt;
@@ -523,35 +525,51 @@ pub(crate) fn spawn_command(
     SandboxExecRequest {
         command: argv,
         cwd,
-        mut env,
+        env,
         arg0,
         ..
     }: SandboxExecRequest,
     stdin: ChildStdin,
 ) -> Result<Child, JSONRPCErrorError> {
-    let Some((program, args)) = argv.split_first() else {
-        return Err(invalid_request("fs sandbox command was empty".to_string()));
-    };
-    let mut command = Command::new(program);
-    #[cfg(unix)]
-    if let Some(arg0) = arg0 {
-        command.arg0(arg0);
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (cwd, env, arg0, stdin);
+        let payload = codex_ios_platform::string_payload(&[("command", argv.join(" "))]);
+        Err(internal_error(
+            codex_ios_platform::unsupported_error(
+                codex_ios_platform::OPERATION_PROCESS_SPAWN,
+                &payload,
+            )
+            .to_string(),
+        ))
     }
-    #[cfg(not(unix))]
-    let _ = arg0;
-    command.args(args);
-    // TODO(anp): Keep PathUri through the filesystem helper launch boundary.
-    let cwd = cwd.to_abs_path().map_err(io_error)?;
-    command.current_dir(cwd.as_path());
-    env.retain(|name, _| !codex_protocol::shell_environment::is_non_inheritable_env_var(name));
-    command.envs(env);
-    command.stdin(stdin);
-    // A helper is a known executable: native launch errors must not retry through fork.
-    command.fallback(SpawnFallback::ReturnError);
-    // macOS cannot receive passed fds with close-on-exec set atomically.
-    #[cfg(target_os = "macos")]
-    command.descriptor_policy(DescriptorPolicy::Explicit);
-    command.spawn().map_err(io_error)
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut env = env;
+        let Some((program, args)) = argv.split_first() else {
+            return Err(invalid_request("fs sandbox command was empty".to_string()));
+        };
+        let mut command = Command::new(program);
+        #[cfg(unix)]
+        if let Some(arg0) = arg0 {
+            command.arg0(arg0);
+        }
+        #[cfg(not(unix))]
+        let _ = arg0;
+        command.args(args);
+        // TODO(anp): Keep PathUri through the filesystem helper launch boundary.
+        let cwd = cwd.to_abs_path().map_err(io_error)?;
+        command.current_dir(cwd.as_path());
+        env.retain(|name, _| !codex_protocol::shell_environment::is_non_inheritable_env_var(name));
+        command.envs(env);
+        command.stdin(stdin);
+        // A helper is a known executable: native launch errors must not retry through fork.
+        command.fallback(SpawnFallback::ReturnError);
+        // macOS cannot receive passed fds with close-on-exec set atomically.
+        #[cfg(target_os = "macos")]
+        command.descriptor_policy(DescriptorPolicy::Explicit);
+        command.spawn().map_err(io_error)
+    }
 }
 
 pub(crate) fn io_error(err: std::io::Error) -> JSONRPCErrorError {

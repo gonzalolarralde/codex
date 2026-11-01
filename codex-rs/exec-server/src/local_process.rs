@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code, unused_imports))]
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -273,6 +275,27 @@ impl LocalProcess {
         }
     }
 
+    #[cfg(target_os = "ios")]
+    async fn start_process(
+        &self,
+        params: ExecParams,
+        _telemetry: ProcessTelemetry,
+    ) -> Result<(ExecResponse, watch::Sender<u64>, ExecProcessEventLog), JSONRPCErrorError> {
+        let _ = self;
+        let payload = codex_ios_platform::string_payload(&[
+            ("processId", params.process_id.to_string()),
+            ("argv", params.argv.join(" ")),
+            ("cwd", params.cwd.to_string()),
+        ]);
+        let message = codex_ios_platform::unsupported_error(
+            codex_ios_platform::OPERATION_PROCESS_SPAWN,
+            &payload,
+        )
+        .to_string();
+        Err(invalid_request(message))
+    }
+
+    #[cfg(not(target_os = "ios"))]
     async fn start_process(
         &self,
         params: ExecParams,

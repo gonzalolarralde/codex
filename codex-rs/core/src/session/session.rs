@@ -1413,7 +1413,16 @@ impl Session {
             let default_shell = session_configuration
                 .user_shell_override
                 .clone()
-                .unwrap_or_else(shell::default_user_shell);
+                .unwrap_or_else(|| {
+                    if cfg!(target_os = "ios") {
+                        shell::Shell {
+                            shell_type: shell::ShellType::Sh,
+                            shell_path: std::path::PathBuf::from("/bin/sh"),
+                        }
+                    } else {
+                        shell::default_user_shell()
+                    }
+                });
             let credential_broker_available = (config.features.enabled(Feature::NetworkProxy)
                 || config.features.enabled(Feature::CredentialMasking))
                 && config

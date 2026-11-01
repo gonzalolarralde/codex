@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "ios", allow(dead_code, unused_imports))]
+
 //! Launch MCP stdio servers and return the transport rmcp should use.
 //!
 //! This module owns the "where does the server process run?" decision:
@@ -260,6 +262,30 @@ mod private {
 impl private::Sealed for LocalStdioServerLauncher {}
 
 impl LocalStdioServerLauncher {
+    #[cfg(target_os = "ios")]
+    fn launch_server(
+        command: StdioServerCommand,
+        fallback_cwd: PathBuf,
+    ) -> io::Result<StdioServerTransport> {
+        let args = command
+            .args
+            .iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        match codex_ios_platform::mcp_stdio_launch(
+            &command.program.to_string_lossy(),
+            &args,
+            &fallback_cwd.display().to_string(),
+        ) {
+            Ok(()) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Swift MCP stdio launch accepted but byte-channel transport is not wired",
+            )),
+            Err(err) => Err(io::Error::new(io::ErrorKind::Unsupported, err.to_string())),
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
     fn launch_server(
         command: StdioServerCommand,
         fallback_cwd: PathBuf,
