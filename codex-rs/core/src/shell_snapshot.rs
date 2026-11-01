@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -34,9 +33,13 @@ use codex_shell_command::shell_snapshot::prepare_snapshot_credentials;
 use codex_shell_command::shell_snapshot::snapshot_capture_script;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
+#[cfg(not(target_os = "ios"))]
+use std::process::Stdio;
 use tokio::fs;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
 use tokio::sync::watch;
+#[cfg(not(target_os = "ios"))]
 use tokio::time::timeout;
 use tracing::Instrument;
 use tracing::info_span;
@@ -549,6 +552,20 @@ async fn write_shell_snapshot(
     if shell_type == ShellType::PowerShell || shell_type == ShellType::Cmd {
         bail!("Shell snapshot not supported yet for {shell_type:?}");
     }
+    #[cfg(target_os = "ios")]
+    let shell = Shell {
+        shell_type,
+        shell_path: std::path::PathBuf::from(match shell_type {
+            ShellType::Zsh => "/bin/zsh",
+            ShellType::Bash => "/bin/bash",
+            ShellType::Sh => "/bin/sh",
+            ShellType::PowerShell | ShellType::Cmd => unreachable!(),
+        }),
+    };
+
+    #[cfg(target_os = "ios")]
+    let shell = &shell;
+
     let (snapshot, credentials) = capture_snapshot(
         shell,
         cwd,
@@ -1031,94 +1048,110 @@ async fn run_script_with_timeout(
     credential_broker: Option<&SnapshotCredentialBroker>,
     sandbox: Option<&ShellSnapshotSandbox>,
 ) -> Result<String> {
-    let suppress_startup_files =
-        credential_broker.is_some() && matches!(shell_mode, SnapshotShellMode::Validation(_));
-    let mut args = shell.derive_exec_args(script, matches!(shell_mode, SnapshotShellMode::Login));
-    if suppress_startup_files && shell.shell_type == ShellType::Zsh {
-        args[1] = "-fc".to_string();
-    }
-    let shell_name = shell.name();
-    let mut prepared_env = None;
-    if let Some(credential_broker) = credential_broker {
-        let policy = &credential_broker.shell_environment_policy;
-        let mut env = create_env_from_vars(std::env::vars(), policy, /*thread_id*/ None);
-        if suppress_startup_files {
-            env.remove("BASH_ENV");
-            env.remove("ENV");
-        }
-        credential_broker.network_proxy.apply_to_env(&mut env);
-        prepared_env = Some(env);
-    }
-    if let Some(sandbox) = sandbox {
-        let snapshot_read_path = match shell_mode {
-            SnapshotShellMode::Validation(path) => Some(path),
-            SnapshotShellMode::Login | SnapshotShellMode::NonLogin => None,
-        };
-        let mut env = prepared_env.unwrap_or_else(|| std::env::vars().collect());
-        remove_env_value(&mut env, CODEX_TOOL_CALL_ID_ENV_VAR);
-        return sandbox
-            .run(
-                args,
-                cwd,
-                env,
-                snapshot_timeout,
-                shell_name,
-                snapshot_read_path,
-            )
-            .await;
-    }
-
-    // Handler is kept as guard to control the drop. The `mut` pattern is required because .args()
-    // returns a ref of handler.
-    let mut handler = Command::from(codex_utils_process::background_command(&args[0]));
-    handler.args(&args[1..]);
-    handler.stdin(Stdio::null());
-    handler.current_dir(cwd);
-    #[cfg(unix)]
+    #[cfg(target_os = "ios")]
     {
-        // The shared launcher needs the complete child environment.
-        handler.env_clear();
-        handler.envs(std::env::vars_os());
+        let _ = (credential_broker, sandbox);
+        codex_ios_platform::shell_snapshot(
+            shell.name(),
+            script,
+            &cwd.display().to_string(),
+            matches!(shell_mode, SnapshotShellMode::Login),
+            snapshot_timeout.as_millis().try_into().unwrap_or(u64::MAX),
+        )
+        .map_err(Into::into)
     }
-    if let Some(env) = prepared_env {
-        handler.env_clear();
-        handler.envs(env);
-    }
-    handler.env_remove(CODEX_TOOL_CALL_ID_ENV_VAR);
-    codex_protocol::shell_environment::scrub_non_inheritable_env_vars(handler.as_std_mut());
-    #[cfg(unix)]
-    let output = {
-        let settings = handler.as_std();
-        // Preserve original inputs: std replaces strings containing NUL bytes.
-        let mut command = codex_utils_pty::Command::new(&args[0]);
-        command
-            .args(&args[1..])
-            .envs(
-                settings
-                    .get_envs()
-                    .filter_map(|(key, value)| value.map(|value| (key, value))),
-            )
-            .current_dir(cwd)
-            .stdin(codex_utils_pty::ChildStdin::File(
-                std::fs::File::open("/dev/null")?.into(),
-            ))
-            .process_mode(codex_utils_pty::ProcessMode::NewSession);
-        async move { command.spawn()?.wait_with_output().await }
-    };
-    #[cfg(not(unix))]
-    let output = handler.kill_on_drop(true).output();
-    let output = timeout(snapshot_timeout, output)
-        .await
-        .map_err(|_| anyhow!("Snapshot command timed out for {shell_name}"))?
-        .with_context(|| format!("Failed to execute {shell_name}"))?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let suppress_startup_files =
+            credential_broker.is_some() && matches!(shell_mode, SnapshotShellMode::Validation(_));
+        let mut args =
+            shell.derive_exec_args(script, matches!(shell_mode, SnapshotShellMode::Login));
+        if suppress_startup_files && shell.shell_type == ShellType::Zsh {
+            args[1] = "-fc".to_string();
+        }
+        let shell_name = shell.name();
+        let mut prepared_env = None;
+        if let Some(credential_broker) = credential_broker {
+            let policy = &credential_broker.shell_environment_policy;
+            let mut env = create_env_from_vars(std::env::vars(), policy, /*thread_id*/ None);
+            if suppress_startup_files {
+                env.remove("BASH_ENV");
+                env.remove("ENV");
+            }
+            credential_broker.network_proxy.apply_to_env(&mut env);
+            prepared_env = Some(env);
+        }
+        if let Some(sandbox) = sandbox {
+            let snapshot_read_path = match shell_mode {
+                SnapshotShellMode::Validation(path) => Some(path),
+                SnapshotShellMode::Login | SnapshotShellMode::NonLogin => None,
+            };
+            let mut env = prepared_env.unwrap_or_else(|| std::env::vars().collect());
+            remove_env_value(&mut env, CODEX_TOOL_CALL_ID_ENV_VAR);
+            return sandbox
+                .run(
+                    args,
+                    cwd,
+                    env,
+                    snapshot_timeout,
+                    shell_name,
+                    snapshot_read_path,
+                )
+                .await;
+        }
 
-    if !output.status.success() {
-        let status = output.status;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("Snapshot command exited with status {status}: {stderr}");
-    }
+        // Handler is kept as guard to control the drop. The `mut` pattern is required because .args()
+        // returns a ref of handler.
+        let mut handler = Command::from(codex_utils_process::background_command(&args[0]));
+        handler.args(&args[1..]);
+        handler.stdin(Stdio::null());
+        handler.current_dir(cwd);
+        #[cfg(unix)]
+        {
+            // The shared launcher needs the complete child environment.
+            handler.env_clear();
+            handler.envs(std::env::vars_os());
+        }
+        if let Some(env) = prepared_env {
+            handler.env_clear();
+            handler.envs(env);
+        }
+        handler.env_remove(CODEX_TOOL_CALL_ID_ENV_VAR);
+        codex_protocol::shell_environment::scrub_non_inheritable_env_vars(handler.as_std_mut());
+        #[cfg(unix)]
+        let output = {
+            let settings = handler.as_std();
+            // Preserve original inputs: std replaces strings containing NUL bytes.
+            let mut command = codex_utils_pty::Command::new(&args[0]);
+            command
+                .args(&args[1..])
+                .envs(
+                    settings
+                        .get_envs()
+                        .filter_map(|(key, value)| value.map(|value| (key, value))),
+                )
+                .current_dir(cwd)
+                .stdin(codex_utils_pty::ChildStdin::File(
+                    std::fs::File::open("/dev/null")?.into(),
+                ))
+                .process_mode(codex_utils_pty::ProcessMode::NewSession);
+            async move { command.spawn()?.wait_with_output().await }
+        };
+        #[cfg(not(unix))]
+        let output = handler.kill_on_drop(true).output();
+        let output = timeout(snapshot_timeout, output)
+            .await
+            .map_err(|_| anyhow!("Snapshot command timed out for {shell_name}"))?
+            .with_context(|| format!("Failed to execute {shell_name}"))?;
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        if !output.status.success() {
+            let status = output.status;
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Snapshot command exited with status {status}: {stderr}");
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
 }
 
 /// Removes shell snapshots that either lack a matching session rollout file or

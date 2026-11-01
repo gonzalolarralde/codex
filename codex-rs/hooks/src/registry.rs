@@ -35,6 +35,7 @@ use codex_plugin::PluginHookSource;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookExecutionMode;
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::scrub_non_inheritable_env_vars;
 use std::ffi::OsString;
 use std::future::Future;
@@ -364,14 +365,27 @@ pub(crate) fn command_from_argv(
     argv: &[String],
     environment: impl IntoIterator<Item = (OsString, OsString)>,
 ) -> Option<Command> {
-    let (program, args) = argv.split_first()?;
-    if program.is_empty() {
-        return None;
+    #[cfg(target_os = "ios")]
+    {
+        let _ = environment;
+        let payload = codex_ios_platform::string_payload(&[("argv", argv.join(" "))]);
+        let _ = codex_ios_platform::unsupported_error(
+            codex_ios_platform::OPERATION_HOOK_COMMAND,
+            &payload,
+        );
+        None
     }
-    let mut command = Command::from(codex_utils_process::background_command(program));
-    command.args(args);
-    command.env_clear();
-    command.envs(environment);
-    scrub_non_inheritable_env_vars(command.as_std_mut());
-    Some(command)
+    #[cfg(not(target_os = "ios"))]
+    {
+        let (program, args) = argv.split_first()?;
+        if program.is_empty() {
+            return None;
+        }
+        let mut command = Command::from(codex_utils_process::background_command(program));
+        command.args(args);
+        command.env_clear();
+        command.envs(environment);
+        scrub_non_inheritable_env_vars(command.as_std_mut());
+        Some(command)
+    }
 }

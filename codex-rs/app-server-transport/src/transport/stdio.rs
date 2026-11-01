@@ -181,7 +181,7 @@ fn start_shutdown_watchdog() {
     });
 }
 
-fn stdio_initialize_client_name(line: &str) -> Option<String> {
+pub(super) fn stdio_initialize_client_name(line: &str) -> Option<String> {
     let message = serde_json::from_str::<JSONRPCMessage>(line).ok()?;
     let JSONRPCMessage::Request(JSONRPCRequest { method, params, .. }) = message else {
         return None;

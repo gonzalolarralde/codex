@@ -42,6 +42,8 @@ pub use transport::daemon_recovery_file_path;
 pub use transport::start_control_socket_acceptor;
 pub use transport::start_remote_control;
 pub use transport::start_stdio_connection;
+pub use transport::start_stdio_connection_with_io;
+pub use transport::start_stdio_connection_with_io_and_shutdown;
 pub use transport::start_websocket_acceptor;
 pub use transport::take_remote_control_disabled_env;
 pub use transport::verified_local_daemon_socket;

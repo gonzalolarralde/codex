@@ -2,12 +2,16 @@ use codex_network_proxy::NetworkProxy;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::collections::HashMap;
 use std::path::PathBuf;
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
 use tokio::process::Child;
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+#[cfg(not(target_os = "ios"))]
 use tracing::trace;
 
 use codex_protocol::permissions::NetworkSandboxPolicy;
+#[cfg(not(target_os = "ios"))]
 use codex_protocol::shell_environment::is_non_inheritable_env_var;
 
 /// Experimental environment variable that will be set to some non-empty value
@@ -38,6 +42,7 @@ pub enum StdioPolicy {
 /// For now, we take `NetworkSandboxPolicy` as a parameter to spawn_child()
 /// because we need to determine whether to set the
 /// `CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR` environment variable.
+#[cfg_attr(target_os = "ios", allow(dead_code))]
 pub(crate) struct SpawnChildRequest<'a> {
     pub program: PathBuf,
     pub args: Vec<String>,
@@ -49,6 +54,25 @@ pub(crate) struct SpawnChildRequest<'a> {
     pub env: HashMap<String, String>,
 }
 
+#[cfg(target_os = "ios")]
+pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io::Result<Child> {
+    let payload = codex_ios_platform::string_payload(&[
+        ("program", request.program.display().to_string()),
+        ("args", request.args.join(" ")),
+        ("cwd", request.cwd.display().to_string()),
+    ]);
+    let message = codex_ios_platform::unsupported_error(
+        codex_ios_platform::OPERATION_PROCESS_SPAWN,
+        &payload,
+    )
+    .to_string();
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        message,
+    ))
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(crate) async fn spawn_child_async(request: SpawnChildRequest<'_>) -> std::io::Result<Child> {
     let SpawnChildRequest {
         program,
